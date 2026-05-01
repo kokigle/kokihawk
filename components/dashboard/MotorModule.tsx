@@ -108,14 +108,40 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
         if (!results.length) return
         setLoading(true)
         try {
-            const dataToSave = results.map(p => ({ user_id: user.id, sku: p.sku.toString().trim().toUpperCase(), descripcion: p.descripcion, precio_final: p.precio_final, plataformas: p.plataformas || [] }))
+            // 1. Usamos un Map para eliminar SKUs duplicados automáticamente
+            const uniqueDataMap = new Map()
+
+            results.forEach(p => {
+                const cleanSku = p.sku.toString().trim().toUpperCase()
+                // Al usar .set(), si el SKU ya existe, se pisa con la versión más nueva
+                uniqueDataMap.set(cleanSku, {
+                    user_id: user.id,
+                    sku: cleanSku,
+                    descripcion: p.descripcion,
+                    precio_final: p.precio_final,
+                    plataformas: p.plataformas || []
+                })
+            })
+
+            // 2. Convertimos el Map de vuelta a un Array
+            const dataToSave = Array.from(uniqueDataMap.values())
+
+            // 3. Subimos en bloques (ahora 100% libres de duplicados)
             for (let i = 0; i < dataToSave.length; i += 1000) {
                 const chunk = dataToSave.slice(i, i + 1000)
-                const { error } = await supabase.from('catalogo_precios').upsert(chunk, { onConflict: 'user_id, sku' })
+                const { error } = await supabase
+                    .from('catalogo_precios')
+                    .upsert(chunk, { onConflict: 'user_id, sku' })
+
                 if (error) throw error
             }
-            alert('¡Catálogo interno actualizado con éxito!')
-        } catch (err: any) { alert('Error al guardar en el catálogo: ' + err.message) } finally { setLoading(false) }
+
+            alert(`¡Catálogo interno actualizado con éxito! Se guardaron ${dataToSave.length} productos únicos.`)
+        } catch (err: any) {
+            alert('Error al guardar en el catálogo: ' + err.message)
+        } finally {
+            setLoading(false)
+        }
     }
 
     const handleDownload = async () => {
