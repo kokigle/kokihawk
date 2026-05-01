@@ -22,7 +22,7 @@ export function HeroSection() {
           {/* Status badge */}
           <div className="inline-flex items-center gap-2 bg-primary/10 border border-primary/25 rounded-full px-4 py-2 text-xs font-semibold text-primary uppercase tracking-wider">
             <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-            Sistema activo para lubricentros y casas de repuestos
+            Sistema activo
           </div>
 
           {/* Headline */}
