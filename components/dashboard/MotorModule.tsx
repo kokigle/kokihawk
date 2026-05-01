@@ -1,4 +1,7 @@
+'use client'
+
 import { useState, useRef, useMemo, useEffect, useDeferredValue, useTransition, useCallback } from 'react'
+import Link from 'next/link'
 import { createClient } from '@/utils/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
@@ -6,18 +9,198 @@ import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import {
     Loader2, Download, ArrowLeft, Save, Upload, CheckCircle2,
-    Zap, AlertTriangle, DatabaseZap, Filter, FileSpreadsheet, Info
+    Zap, AlertTriangle, DatabaseZap, Filter, FileSpreadsheet,
+    Info, ShieldAlert, ShieldCheck, TrendingDown, TrendingUp, Scale,
+    ChevronLeft, ChevronRight
 } from 'lucide-react'
 import Image from 'next/image'
 import { StepIndicator, MappingButton, PlatformBadges } from './SharedUI'
 
-function isAnomaly(precioFinal: number, costoBase: number): false | 'bajo' | 'alto' {
-    if (!costoBase || costoBase <= 0) return false
-    if (precioFinal < costoBase) return 'bajo'
-    if (precioFinal > costoBase * 2) return 'alto'
-    return false
+// ─────────────────────────────────────────────────────────────────
+// CONSTANTES
+// ─────────────────────────────────────────────────────────────────
+const PAGE_SIZE = 100
+const CHUNK_SIZE = 200
+
+// ─────────────────────────────────────────────────────────────────
+// TIPOS
+// ─────────────────────────────────────────────────────────────────
+type AnomalyKind =
+    | 'bajo_costo'
+    | 'alto_costo'
+    | 'shock_baja_meli'
+    | 'shock_alza_meli'
+    | 'shock_baja_tn'
+    | 'shock_alza_tn'
+
+// ─────────────────────────────────────────────────────────────────
+// ESCUDO TÉCNICO — detección de anomalías
+// ─────────────────────────────────────────────────────────────────
+const DROP_THRESHOLD = 0.30
+const SPIKE_THRESHOLD = 4.00
+
+function getAnomalies(prod: any): AnomalyKind[] {
+    const kinds: AnomalyKind[] = []
+    const nuevo = prod.precio_final ?? 0
+    const costo = prod.precio_original ?? 0
+    const liveMeli = prod.precio_actual_meli
+    const liveTN = prod.precio_actual_tn
+
+    if (costo > 0) {
+        if (nuevo < costo) kinds.push('bajo_costo')
+        if (nuevo > costo * 2) kinds.push('alto_costo')
+    }
+    if (liveMeli && liveMeli > 0) {
+        if ((liveMeli - nuevo) / liveMeli > DROP_THRESHOLD) kinds.push('shock_baja_meli')
+        if ((nuevo - liveMeli) / liveMeli > SPIKE_THRESHOLD) kinds.push('shock_alza_meli')
+    }
+    if (liveTN && liveTN > 0) {
+        if ((liveTN - nuevo) / liveTN > DROP_THRESHOLD) kinds.push('shock_baja_tn')
+        if ((nuevo - liveTN) / liveTN > SPIKE_THRESHOLD) kinds.push('shock_alza_tn')
+    }
+    return kinds
 }
 
+function hasAnomaly(prod: any): boolean {
+    return getAnomalies(prod).length > 0
+}
+
+function formatARS(n: number) {
+    return n.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+}
+
+// ─────────────────────────────────────────────────────────────────
+// SUB-COMPONENTE: Badge de shock de precio live
+// ─────────────────────────────────────────────────────────────────
+function PriceShockBadge({
+    kind, actualPrice, newPrice,
+}: { kind: 'baja' | 'alza'; actualPrice: number; newPrice: number; platform: string }) {
+    const isBaja = kind === 'baja'
+    const pct = isBaja
+        ? Math.round((actualPrice - newPrice) / actualPrice * 100)
+        : Math.round((newPrice - actualPrice) / actualPrice * 100)
+
+    return (
+        <div className={`flex items-start gap-1.5 rounded-lg border px-2 py-1.5 text-[10px] leading-tight ${isBaja
+            ? 'bg-red-500/10 border-red-500/25 text-red-500'
+            : 'bg-orange-500/10 border-orange-500/25 text-orange-500'
+            }`}>
+            {isBaja
+                ? <TrendingDown className="h-3 w-3 flex-shrink-0 mt-px" />
+                : <TrendingUp className="h-3 w-3 flex-shrink-0 mt-px" />
+            }
+            <span className="font-black">
+                {isBaja ? `−${pct}%` : `+${pct}%`}{' '}
+                <span className="font-semibold opacity-80">
+                    ${formatARS(actualPrice)} → ${formatARS(newPrice)}
+                </span>
+            </span>
+        </div>
+    )
+}
+
+// ─────────────────────────────────────────────────────────────────
+// SUB-COMPONENTE: Controles de paginación
+// ─────────────────────────────────────────────────────────────────
+function PaginationControls({
+    currentPage, totalPages, totalItems, onPrev, onNext,
+}: {
+    currentPage: number
+    totalPages: number
+    totalItems: number
+    onPrev: () => void
+    onNext: () => void
+}) {
+    if (totalPages <= 1) return null
+    const from = (currentPage - 1) * PAGE_SIZE + 1
+    const to = Math.min(currentPage * PAGE_SIZE, totalItems)
+
+    return (
+        <div className="flex items-center justify-between px-4 py-2.5 border-t border-border/40 bg-secondary/20">
+            <span className="text-[10px] font-bold text-muted-foreground tabular-nums">
+                {from}–{to} de {totalItems.toLocaleString('es-AR')} productos
+            </span>
+            <div className="flex items-center gap-1.5">
+                <button
+                    onClick={onPrev}
+                    disabled={currentPage === 1}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-border/60 text-[10px] font-bold text-muted-foreground hover:bg-secondary/60 hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                >
+                    <ChevronLeft className="h-3 w-3" /> Anterior
+                </button>
+                <span className="text-[10px] font-black text-foreground bg-primary/10 border border-primary/20 px-2.5 py-1.5 rounded-lg tabular-nums">
+                    {currentPage} / {totalPages}
+                </span>
+                <button
+                    onClick={onNext}
+                    disabled={currentPage === totalPages}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-border/60 text-[10px] font-bold text-muted-foreground hover:bg-secondary/60 hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                >
+                    Siguiente <ChevronRight className="h-3 w-3" />
+                </button>
+            </div>
+        </div>
+    )
+}
+
+// ─────────────────────────────────────────────────────────────────
+// SUB-COMPONENTE: Checkbox de responsabilidad legal
+// ─────────────────────────────────────────────────────────────────
+function LegalCheckbox({
+    checked, onChange,
+}: { checked: boolean; onChange: (v: boolean) => void }) {
+    return (
+        <div className={`flex items-start gap-3 p-4 rounded-2xl border transition-all duration-200 ${checked
+            ? 'bg-emerald-500/5 border-emerald-500/25'
+            : 'bg-secondary/30 border-border/60'
+            }`}>
+            <div className="flex-shrink-0 mt-0.5">
+                <button
+                    role="checkbox"
+                    aria-checked={checked}
+                    onClick={() => onChange(!checked)}
+                    className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-primary/30 ${checked
+                        ? 'bg-emerald-500 border-emerald-500'
+                        : 'border-border/60 hover:border-primary/50 bg-secondary/40'
+                        }`}
+                >
+                    {checked && (
+                        <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                    )}
+                </button>
+            </div>
+            <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1">
+                    {checked
+                        ? <ShieldCheck className="h-3.5 w-3.5 text-emerald-500 flex-shrink-0" />
+                        : <Scale className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                    }
+                    <span className={`text-[10px] font-black uppercase tracking-widest ${checked ? 'text-emerald-500' : 'text-muted-foreground'}`}>
+                        Confirmación requerida
+                    </span>
+                </div>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                    Confirmo que he revisado los precios finales. Entiendo que KokiHawk es una herramienta de cálculo
+                    y asumo total responsabilidad sobre los precios publicados, aceptando los{' '}
+                    <Link
+                        href="/terminos"
+                        target="_blank"
+                        className="text-primary hover:text-primary/80 underline underline-offset-2 font-semibold transition-colors"
+                    >
+                        Términos y Condiciones
+                    </Link>
+                    {' '}del servicio.
+                </p>
+            </div>
+        </div>
+    )
+}
+
+// ─────────────────────────────────────────────────────────────────
+// PROPS
+// ─────────────────────────────────────────────────────────────────
 interface Props {
     user: any
     integraciones: any
@@ -27,6 +210,9 @@ interface Props {
     setStep: (s: number) => void
 }
 
+// ─────────────────────────────────────────────────────────────────
+// MOTOR MODULE
+// ─────────────────────────────────────────────────────────────────
 export default function MotorModule({ user, integraciones, setIntegraciones, setActiveModule, step, setStep }: Props) {
     const [file, setFile] = useState<File | null>(null)
     const [loading, setLoading] = useState(false)
@@ -38,14 +224,28 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
     const [filterMeli, setFilterMeli] = useState(false)
     const [filterTN, setFilterTN] = useState(false)
     const [plantillas, setPlantillas] = useState<any[]>([])
+    const [legalConfirmed, setLegalConfirmed] = useState(false)
 
-    // Deferred values for the results filter — keeps UI snappy while filtering large arrays
+    // ── Paginación del Paso 3 ──
+    const [currentPage, setCurrentPage] = useState(1)
+
+    // ── Progreso de sincronización ──
+    const [syncProgress, setSyncProgress] = useState({
+        isOpen: false, platform: '', current: 0, total: 0, updated: 0, notFound: 0, errors: 0,
+    })
+
     const deferredFilterMeli = useDeferredValue(filterMeli)
     const deferredFilterTN = useDeferredValue(filterTN)
     const [, startTransition] = useTransition()
 
     const fileInputRef = useRef<HTMLInputElement>(null)
     const supabase = createClient()
+
+    // Reset checkbox legal cuando llegan resultados nuevos
+    useEffect(() => { setLegalConfirmed(false) }, [results])
+
+    // Reset página cuando cambia el conjunto filtrado
+    useEffect(() => { setCurrentPage(1) }, [results, deferredFilterMeli, deferredFilterTN])
 
     useEffect(() => {
         if (user) {
@@ -58,7 +258,11 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
     const guardarPlantilla = async () => {
         const nombre = prompt('Nombre de la plantilla:')
         if (!nombre) return
-        const { error } = await supabase.from('plantillas_mapeo').insert({ user_id: user.id, nombre, col_sku: mapping.sku, col_desc: mapping.desc, col_precio: mapping.precio, fila_inicio: mapping.startRow })
+        const { error } = await supabase.from('plantillas_mapeo').insert({
+            user_id: user.id, nombre,
+            col_sku: mapping.sku, col_desc: mapping.desc,
+            col_precio: mapping.precio, fila_inicio: mapping.startRow,
+        })
         if (error) alert('Error al guardar')
         else {
             alert('¡Plantilla guardada!')
@@ -103,16 +307,48 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
         }
         if (integraciones?.tiendanube_access_token) formData.append('tn_token', integraciones.tiendanube_access_token)
         if (integraciones?.tiendanube_store_id) formData.append('tn_store', integraciones.tiendanube_store_id)
-        const { data: dicData } = await supabase.from('diccionario_skus').select('sku_proveedor, sku_ecommerce').eq('user_id', user.id)
-        if (dicData && dicData.length > 0) formData.append('diccionario', JSON.stringify(dicData))
+
+        // ── Paginación del Diccionario ────────────────────────────────────────
+        let allDicData: any[] = []
+        let fetchMore = true
+        let from = 0, to = 999
+
+        while (fetchMore) {
+            const { data: chunk, error } = await supabase
+                .from('diccionario_skus')
+                .select('sku_proveedor, sku_ecommerce')
+                .eq('user_id', user.id)
+                .range(from, to)
+
+            if (error) { console.error('Error fetching dictionary:', error); break }
+            if (chunk && chunk.length > 0) {
+                allDicData = [...allDicData, ...chunk]
+                from += 1000; to += 1000
+                if (chunk.length < 1000) fetchMore = false
+            } else {
+                fetchMore = false
+            }
+        }
+
+        if (allDicData.length > 0) formData.append('diccionario', JSON.stringify(allDicData))
+
         try {
             const res = await fetch('https://api.kokihawk.com.ar/procesar-lista', { method: 'POST', body: formData })
             const data = await res.json()
             if (data.status === 'success') {
                 if (data.nuevos_tokens_meli) {
-                    await supabase.from('integraciones_api').update({ meli_access_token: data.nuevos_tokens_meli.access_token, meli_refresh_token: data.nuevos_tokens_meli.refresh_token, updated_at: new Date().toISOString() }).eq('user_id', user.id)
-                    setIntegraciones((prev: any) => ({ ...prev, meli_access_token: data.nuevos_tokens_meli.access_token, meli_refresh_token: data.nuevos_tokens_meli.refresh_token }))
+                    await supabase.from('integraciones_api').update({
+                        meli_access_token: data.nuevos_tokens_meli.access_token,
+                        meli_refresh_token: data.nuevos_tokens_meli.refresh_token,
+                        updated_at: new Date().toISOString(),
+                    }).eq('user_id', user.id)
+                    setIntegraciones((prev: any) => ({
+                        ...prev,
+                        meli_access_token: data.nuevos_tokens_meli.access_token,
+                        meli_refresh_token: data.nuevos_tokens_meli.refresh_token,
+                    }))
                 }
+                // Los objetos del array ya incluyen meli_item_id, tn_product_id, tn_variant_id
                 setResults(data.productos)
                 setStep(3)
             } else throw new Error(data.mensaje)
@@ -126,11 +362,17 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
             const uniqueDataMap = new Map()
             results.forEach(p => {
                 const cleanSku = p.sku.toString().trim().toUpperCase()
-                uniqueDataMap.set(cleanSku, { user_id: user.id, sku: cleanSku, descripcion: p.descripcion, precio_final: p.precio_final, plataformas: p.plataformas || [] })
+                uniqueDataMap.set(cleanSku, {
+                    user_id: user.id, sku: cleanSku,
+                    descripcion: p.descripcion, precio_final: p.precio_final, plataformas: p.plataformas || [],
+                })
             })
             const dataToSave = Array.from(uniqueDataMap.values())
             for (let i = 0; i < dataToSave.length; i += 1000) {
-                const { error } = await supabase.from('catalogo_precios').upsert(dataToSave.slice(i, i + 1000), { onConflict: 'user_id, sku' })
+                const { error } = await supabase.from('catalogo_precios').upsert(
+                    dataToSave.slice(i, i + 1000),
+                    { onConflict: 'user_id, sku' }
+                )
                 if (error) throw error
             }
             alert(`¡Catálogo actualizado! Se guardaron ${dataToSave.length} productos únicos.`)
@@ -141,67 +383,155 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
     const handleDownload = async () => {
         setLoading(true)
         try {
-            const res = await fetch('https://api.kokihawk.com.ar/descargar-excel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(results) })
+            const res = await fetch('https://api.kokihawk.com.ar/descargar-excel', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(results),
+            })
             const blob = await res.blob()
             const url = window.URL.createObjectURL(blob)
             const a = document.createElement('a'); a.href = url; a.download = 'KokiHawk_Procesado.xlsx'; a.click()
         } catch { alert('Error al descargar') } finally { setLoading(false) }
     }
 
+    // ── Sync TiendaNube: envía objetos completos (con tn_product_id / tn_variant_id) ──
     const handleSyncTiendaNube = async () => {
-        if (!integraciones?.tiendanube_access_token) { window.location.href = 'https://www.tiendanube.com/apps/30786/authorize'; return }
+        if (!integraciones?.tiendanube_access_token) {
+            window.location.href = 'https://www.tiendanube.com/apps/30786/authorize'; return
+        }
         if (!confirm(`¿Subir ${results.length} precios a Tienda Nube?`)) return
-        setLoading(true)
-        try {
-            const res = await fetch('https://api.kokihawk.com.ar/sincronizar-tiendanube', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ access_token: integraciones.tiendanube_access_token, store_id: integraciones.tiendanube_store_id, productos: results }) })
-            const data = await res.json()
-            if (data.status === 'success') alert(`☁️ TN COMPLETADO:\n✅ Actualizados: ${data.stats.actualizados}\n❌ No encontrados: ${data.stats.no_encontrados}\n⚠️ Errores: ${data.stats.errores}`)
-            else alert('Error: ' + data.mensaje)
-        } catch { alert('Error de red.') } finally { setLoading(false) }
-    }
 
-    const handleSyncMeLi = async () => {
-        if (!integraciones?.meli_access_token) { window.location.href = `https://auth.mercadolibre.com.ar/authorization?response_type=code&client_id=3703622904525600&redirect_uri=https://api.kokihawk.com.ar/meli/callback`; return }
-        if (!confirm('¿Actualizar precios en Mercado Libre?')) return
-        setLoading(true)
+        setSyncProgress({ isOpen: true, platform: 'Tienda Nube', current: 0, total: results.length, updated: 0, notFound: 0, errors: 0 })
+        let stats = { actualizados: 0, no_encontrados: 0, errores: 0 }
+
         try {
-            const res = await fetch('https://api.kokihawk.com.ar/sincronizar-meli', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ access_token: integraciones.meli_access_token, refresh_token: integraciones.meli_refresh_token, productos: results }) })
-            const data = await res.json()
-            if (res.status === 401) { alert(data.mensaje); setIntegraciones((prev: any) => ({ ...prev, meli_access_token: null })) }
-            else if (data.status === 'success') {
-                if (data.nuevos_tokens) {
-                    await supabase.from('integraciones_api').update({ meli_access_token: data.nuevos_tokens.access_token, meli_refresh_token: data.nuevos_tokens.refresh_token, updated_at: new Date().toISOString() }).eq('user_id', user.id)
-                    setIntegraciones((prev: any) => ({ ...prev, meli_access_token: data.nuevos_tokens.access_token, meli_refresh_token: data.nuevos_tokens.refresh_token }))
+            for (let i = 0; i < results.length; i += CHUNK_SIZE) {
+                // El slice mantiene meli_item_id, tn_product_id, tn_variant_id intactos
+                const chunk = results.slice(i, i + CHUNK_SIZE)
+                const res = await fetch('https://api.kokihawk.com.ar/sincronizar-tiendanube', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        access_token: integraciones.tiendanube_access_token,
+                        store_id: integraciones.tiendanube_store_id,
+                        productos: chunk,
+                    }),
+                })
+                const data = await res.json()
+                if (data.status === 'success') {
+                    stats.actualizados += data.stats.actualizados
+                    stats.no_encontrados += data.stats.no_encontrados
+                    stats.errores += data.stats.errores
+                } else {
+                    console.error('Error en lote TN:', data.mensaje)
                 }
-                alert(`📦 M.LIBRE COMPLETADO:\n\n✅ Actualizados: ${data.stats.actualizados}\n❌ No encontrados: ${data.stats.no_encontrados}\n⚠️ Errores: ${data.stats.errores}`)
-            } else alert('Error de la API: ' + data.mensaje)
-        } catch { alert('Error de red.') } finally { setLoading(false) }
+                setSyncProgress(prev => ({
+                    ...prev,
+                    current: Math.min(i + CHUNK_SIZE, results.length),
+                    updated: stats.actualizados,
+                    notFound: stats.no_encontrados,
+                    errors: stats.errores,
+                }))
+            }
+            alert(`☁️ TN COMPLETADO:\n✅ Actualizados: ${stats.actualizados}\n❌ No encontrados: ${stats.no_encontrados}\n⚠️ Errores: ${stats.errores}`)
+        } catch {
+            alert('Error de red al sincronizar. Verificá tu conexión.')
+        } finally {
+            setSyncProgress(prev => ({ ...prev, isOpen: false }))
+        }
     }
 
-    // Use useCallback to avoid re-creating function every render
+    // ── Sync MeLi: envía objetos completos (con meli_item_id) ──
+    const handleSyncMeLi = async () => {
+        if (!integraciones?.meli_access_token) {
+            window.location.href = `https://auth.mercadolibre.com.ar/authorization?response_type=code&client_id=3703622904525600&redirect_uri=https://api.kokihawk.com.ar/meli/callback`; return
+        }
+        if (!confirm(`¿Actualizar ${results.length} precios en Mercado Libre?`)) return
+
+        setSyncProgress({ isOpen: true, platform: 'Mercado Libre', current: 0, total: results.length, updated: 0, notFound: 0, errors: 0 })
+        let stats = { actualizados: 0, no_encontrados: 0, errores: 0 }
+        let currentToken = integraciones.meli_access_token
+        let currentRefresh = integraciones.meli_refresh_token
+
+        try {
+            for (let i = 0; i < results.length; i += CHUNK_SIZE) {
+                // El slice mantiene meli_item_id intacto — el backend hace PUT directo
+                const chunk = results.slice(i, i + CHUNK_SIZE)
+                const res = await fetch('https://api.kokihawk.com.ar/sincronizar-meli', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        access_token: currentToken,
+                        refresh_token: currentRefresh,
+                        productos: chunk,
+                    }),
+                })
+                const data = await res.json()
+
+                if (res.status === 401) {
+                    alert(data.mensaje)
+                    setIntegraciones((prev: any) => ({ ...prev, meli_access_token: null }))
+                    break
+                }
+
+                if (data.status === 'success') {
+                    stats.actualizados += data.stats.actualizados
+                    stats.no_encontrados += data.stats.no_encontrados
+                    stats.errores += data.stats.errores
+
+                    if (data.nuevos_tokens) {
+                        currentToken = data.nuevos_tokens.access_token
+                        currentRefresh = data.nuevos_tokens.refresh_token
+                        await supabase.from('integraciones_api').update({
+                            meli_access_token: currentToken,
+                            meli_refresh_token: currentRefresh,
+                            updated_at: new Date().toISOString(),
+                        }).eq('user_id', user.id)
+                        setIntegraciones((prev: any) => ({ ...prev, meli_access_token: currentToken, meli_refresh_token: currentRefresh }))
+                    }
+                }
+
+                setSyncProgress(prev => ({
+                    ...prev,
+                    current: Math.min(i + CHUNK_SIZE, results.length),
+                    updated: stats.actualizados,
+                    notFound: stats.no_encontrados,
+                    errors: stats.errores,
+                }))
+            }
+            alert(`📦 M.LIBRE COMPLETADO:\n\n✅ Actualizados: ${stats.actualizados}\n❌ No encontrados: ${stats.no_encontrados}\n⚠️ Errores: ${stats.errores}`)
+        } catch {
+            alert('Error de red al sincronizar. Verificá tu conexión.')
+        } finally {
+            setSyncProgress(prev => ({ ...prev, isOpen: false }))
+        }
+    }
+
     const updatePrecioFinal = useCallback((sku: string, newValue: number) => {
         setResults(prev => prev.map(p => p.sku === sku ? { ...p, precio_final: newValue } : p))
     }, [])
 
-    // Filter runs on DEFERRED values to keep switches snappy
+    // ── Lista filtrada y ordenada (todos los items, no paginada aún) ──
     const processedResults = useMemo(() => {
         let filtered = [...results]
         if (deferredFilterMeli && !deferredFilterTN) filtered = filtered.filter(p => p.plataformas?.includes('meli'))
         else if (deferredFilterTN && !deferredFilterMeli) filtered = filtered.filter(p => p.plataformas?.includes('tn'))
         else if (deferredFilterMeli && deferredFilterTN) filtered = filtered.filter(p => p.plataformas?.includes('meli') || p.plataformas?.includes('tn'))
-        // Sort anomalies to top
         return filtered.sort((a, b) => {
-            const aA = !!isAnomaly(a.precio_final ?? 0, a.precio_original ?? 0)
-            const bA = !!isAnomaly(b.precio_final ?? 0, b.precio_original ?? 0)
-            return aA === bA ? 0 : aA ? -1 : 1
+            const aH = hasAnomaly(a), bH = hasAnomaly(b)
+            return aH === bH ? 0 : aH ? -1 : 1
         })
     }, [results, deferredFilterMeli, deferredFilterTN])
 
-    const anomalyCount = useMemo(() =>
-        results.filter(p => !!isAnomaly(p.precio_final ?? 0, p.precio_original ?? 0)).length, [results])
+    // ── Slice paginado para el DOM — máximo PAGE_SIZE nodos en tabla ──
+    const totalPages = Math.max(1, Math.ceil(processedResults.length / PAGE_SIZE))
+    const paginatedResults = useMemo(() => {
+        const start = (currentPage - 1) * PAGE_SIZE
+        return processedResults.slice(start, start + PAGE_SIZE)
+    }, [processedResults, currentPage])
 
+    const anomalyCount = useMemo(() => results.filter(hasAnomaly).length, [results])
     const isFilterPending = filterMeli !== deferredFilterMeli || filterTN !== deferredFilterTN
     const canProcess = mapping.sku !== -1 && mapping.precio !== -1
+    const canSync = legalConfirmed && !loading
 
     return (
         <div className="space-y-5 mt-4">
@@ -225,11 +555,8 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                         <h1 className="text-2xl md:text-3xl font-black text-foreground tracking-tight">Motor de Listas</h1>
                         <p className="text-muted-foreground text-base">Subí tu lista de precios en Excel o CSV para comenzar.</p>
                     </div>
-
-                    <div
-                        onClick={() => fileInputRef.current?.click()}
-                        className="group relative border-2 border-dashed border-border/60 rounded-2xl bg-card hover:border-primary/50 hover:bg-primary/3 transition-all duration-200 cursor-pointer overflow-hidden"
-                    >
+                    <div onClick={() => fileInputRef.current?.click()}
+                        className="group relative border-2 border-dashed border-border/60 rounded-2xl bg-card hover:border-primary/50 hover:bg-primary/3 transition-all duration-200 cursor-pointer overflow-hidden">
                         <div className="absolute inset-0 opacity-[0.02] pointer-events-none" style={{ backgroundImage: `repeating-linear-gradient(0deg, transparent, transparent 24px, currentColor 24px, currentColor 25px), repeating-linear-gradient(90deg, transparent, transparent 24px, currentColor 24px, currentColor 25px)` }} />
                         <div className="relative p-12 md:p-16 flex flex-col items-center gap-5 text-center">
                             <div className="w-16 h-16 rounded-2xl bg-primary/8 border border-primary/15 flex items-center justify-center group-hover:bg-primary/12 group-hover:scale-105 transition-all duration-200">
@@ -246,7 +573,6 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                             </Button>
                         </div>
                     </div>
-
                     <div className="flex items-start gap-2.5 bg-secondary/30 border border-border/50 rounded-xl p-4">
                         <Info className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-0.5" />
                         <p className="text-xs text-muted-foreground leading-relaxed">
@@ -305,8 +631,6 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                             </div>
                         </div>
                     </div>
-
-                    {/* Mapping legend */}
                     <div className="flex flex-wrap gap-2 items-center">
                         <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mr-1">Asignar columnas:</span>
                         {[
@@ -322,8 +646,6 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                         ))}
                         {!canProcess && <p className="text-[10px] text-muted-foreground/60 ml-1">← Hacé clic en los botones de cada columna</p>}
                     </div>
-
-                    {/* Preview table */}
                     <div className="bg-card border border-border/60 rounded-2xl overflow-hidden shadow-sm">
                         <div className="overflow-x-auto">
                             <table className="w-full text-sm border-collapse min-w-[400px]">
@@ -346,11 +668,8 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                                 </thead>
                                 <tbody>
                                     {previewData.map((fila, fIdx) => (
-                                        <tr
-                                            key={fIdx}
-                                            onClick={() => setMapping(m => ({ ...m, startRow: fIdx }))}
-                                            className={`cursor-pointer border-b border-border/20 transition-colors ${mapping.startRow === fIdx ? 'bg-primary/8' : 'hover:bg-secondary/20'}`}
-                                        >
+                                        <tr key={fIdx} onClick={() => setMapping(m => ({ ...m, startRow: fIdx }))}
+                                            className={`cursor-pointer border-b border-border/20 transition-colors ${mapping.startRow === fIdx ? 'bg-primary/8' : 'hover:bg-secondary/20'}`}>
                                             <td className="p-3 border-r border-border/20 text-center">
                                                 {mapping.startRow === fIdx
                                                     ? <span className="text-[9px] font-black text-primary bg-primary/10 px-1.5 py-0.5 rounded">▶ INICIO</span>
@@ -378,6 +697,24 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
             {/* ── STEP 3 ── */}
             {step === 3 && (
                 <div className="space-y-4">
+
+                    {/* Banner de anomalías críticas */}
+                    {anomalyCount > 0 && (
+                        <div className="flex items-start gap-3 bg-red-500/8 border border-red-500/25 rounded-2xl p-4">
+                            <div className="w-9 h-9 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center flex-shrink-0">
+                                <ShieldAlert className="h-5 w-5 text-red-500" />
+                            </div>
+                            <div>
+                                <p className="text-sm font-black text-red-500">
+                                    {anomalyCount} precio{anomalyCount !== 1 ? 's requieren' : ' requiere'} revisión
+                                </p>
+                                <p className="text-xs text-red-400/80 mt-0.5 leading-relaxed">
+                                    Detectamos precios que se alejan significativamente de su valor publicado actual o de su costo de proveedor. Revisá cada uno antes de sincronizar.
+                                </p>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Results header */}
                     <div className="bg-card border border-border/60 rounded-2xl p-4 md:p-5 shadow-sm">
                         <div className="flex flex-col lg:flex-row justify-between gap-4 items-start lg:items-center">
@@ -389,7 +726,7 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                                 {anomalyCount > 0 && (
                                     <p className="text-xs font-bold text-red-500 flex items-center gap-1.5 pl-7 mt-0.5">
                                         <AlertTriangle className="h-3 w-3" />
-                                        {anomalyCount} anomalías — revisá los precios marcados
+                                        {anomalyCount} anomalías — revisá los precios marcados antes de sincronizar
                                     </p>
                                 )}
                             </div>
@@ -402,25 +739,6 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                                     className="border-violet-500/30 text-violet-400 hover:bg-violet-500/8 text-xs font-bold gap-1.5">
                                     <DatabaseZap className="h-3.5 w-3.5" /> Guardar Catálogo
                                 </Button>
-                                <div className="h-6 w-px bg-border/60 hidden lg:block" />
-                                <button
-                                    onClick={integraciones?.meli_access_token ? handleSyncMeLi : undefined}
-                                    disabled={loading || !integraciones?.meli_access_token}
-                                    title={!integraciones?.meli_access_token ? 'Conectá Mercado Libre en Integraciones' : ''}
-                                    className={`flex items-center gap-2 px-3.5 py-2 rounded-xl font-bold text-xs transition-all ${integraciones?.meli_access_token ? 'bg-[#FFE600] text-[#2D3277] hover:opacity-90 shadow-sm' : 'bg-secondary/60 text-muted-foreground opacity-50 cursor-not-allowed border border-border/50'}`}
-                                >
-                                    {loading ? <Loader2 className="animate-spin h-3.5 w-3.5" /> : <Image src="/logos/meli.png" width={14} height={14} alt="meli" className="rounded-sm" />}
-                                    {integraciones?.meli_access_token ? 'Actualizar MeLi' : 'MeLi sin conectar'}
-                                </button>
-                                <button
-                                    onClick={integraciones?.tiendanube_access_token ? handleSyncTiendaNube : undefined}
-                                    disabled={loading || !integraciones?.tiendanube_access_token}
-                                    title={!integraciones?.tiendanube_access_token ? 'Conectá Tienda Nube en Integraciones' : ''}
-                                    className={`flex items-center gap-2 px-3.5 py-2 rounded-xl font-bold text-xs transition-all ${integraciones?.tiendanube_access_token ? 'bg-[#0070F0] text-white hover:opacity-90 shadow-sm' : 'bg-secondary/60 text-muted-foreground opacity-50 cursor-not-allowed border border-border/50'}`}
-                                >
-                                    {loading ? <Loader2 className="animate-spin h-3.5 w-3.5" /> : <Image src="/logos/tiendanube.png" width={14} height={14} alt="tn" className="rounded-sm" />}
-                                    {integraciones?.tiendanube_access_token ? 'Actualizar TN' : 'TN sin conectar'}
-                                </button>
                             </div>
                         </div>
                     </div>
@@ -431,19 +749,11 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                             <Filter className="h-3 w-3" /> Filtrar:
                         </span>
                         <label className="flex items-center gap-2 cursor-pointer group">
-                            <Switch
-                                checked={filterMeli}
-                                onCheckedChange={(v) => startTransition(() => setFilterMeli(v))}
-                                className="scale-75"
-                            />
+                            <Switch checked={filterMeli} onCheckedChange={(v) => startTransition(() => setFilterMeli(v))} className="scale-75" />
                             <span className={`text-xs font-bold ${filterMeli ? 'text-amber-400' : 'text-muted-foreground group-hover:text-foreground'} transition-colors`}>Mercado Libre</span>
                         </label>
                         <label className="flex items-center gap-2 cursor-pointer group">
-                            <Switch
-                                checked={filterTN}
-                                onCheckedChange={(v) => startTransition(() => setFilterTN(v))}
-                                className="scale-75"
-                            />
+                            <Switch checked={filterTN} onCheckedChange={(v) => startTransition(() => setFilterTN(v))} className="scale-75" />
                             <span className={`text-xs font-bold ${filterTN ? 'text-blue-400' : 'text-muted-foreground group-hover:text-foreground'} transition-colors`}>Tienda Nube</span>
                         </label>
                         <span className={`ml-auto text-xs font-bold tabular-nums transition-opacity ${isFilterPending ? 'text-muted-foreground/40' : 'text-muted-foreground'}`}>
@@ -451,42 +761,98 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                         </span>
                     </div>
 
-                    {/* Results table */}
+                    {/* Results table — solo PAGE_SIZE nodos en el DOM */}
                     <div className="bg-card border border-border/60 rounded-2xl overflow-hidden shadow-sm">
-                        <div className={`max-h-[520px] overflow-y-auto overflow-x-auto transition-opacity ${isFilterPending ? 'opacity-60' : 'opacity-100'}`}>
-                            <table className="w-full text-sm border-collapse min-w-[580px]">
+                        <div className={`overflow-x-auto transition-opacity ${isFilterPending ? 'opacity-60' : 'opacity-100'}`}>
+                            <table className="w-full text-sm border-collapse min-w-[680px]">
                                 <thead className="bg-secondary/50 sticky top-0 border-b border-border/60 z-10">
                                     <tr>
                                         <th className="w-8 p-3" />
-                                        <th className="text-left p-3 text-[9px] font-black uppercase tracking-widest text-muted-foreground">Plataforma</th>
+                                        <th className="text-left p-3 text-[9px] font-black uppercase tracking-widest text-muted-foreground">Plat.</th>
                                         <th className="text-left p-3 text-[9px] font-black uppercase tracking-widest text-muted-foreground">SKU</th>
                                         <th className="text-left p-3 text-[9px] font-black uppercase tracking-widest text-muted-foreground">Descripción</th>
                                         <th className="text-right p-3 text-[9px] font-black uppercase tracking-widest text-muted-foreground">Costo</th>
-                                        <th className="text-right p-3 pr-4 text-[9px] font-black uppercase tracking-widest text-primary">Precio Final ✏️</th>
+                                        <th className="text-right p-3 text-[9px] font-black uppercase tracking-widest text-blue-400">Precio Actual ↗</th>
+                                        <th className="text-right p-3 pr-4 text-[9px] font-black uppercase tracking-widest text-primary">Precio Nuevo ✏️</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-border/20">
-                                    {processedResults.map((prod, i) => {
-                                        const anomaly = isAnomaly(prod.precio_final ?? 0, prod.precio_original ?? 0)
+                                    {paginatedResults.map((prod, i) => {
+                                        const kinds = getAnomalies(prod)
+                                        const hasProblems = kinds.length > 0
+                                        const liveMeli = prod.precio_actual_meli
+                                        const liveTN = prod.precio_actual_tn
+                                        const liveRef = liveMeli ?? liveTN
+                                        const hasBajaMeli = kinds.includes('shock_baja_meli')
+                                        const hasBajaTN = kinds.includes('shock_baja_tn')
+                                        const hasAlzaMeli = kinds.includes('shock_alza_meli')
+                                        const hasAlzaTN = kinds.includes('shock_alza_tn')
+
                                         return (
-                                            <tr key={i} className={`transition-colors ${anomaly ? 'bg-red-500/4 hover:bg-red-500/6' : 'hover:bg-secondary/15'}`}>
-                                                <td className="p-3 text-center">{anomaly && <AlertTriangle className="h-3.5 w-3.5 text-red-500 mx-auto" />}</td>
+                                            <tr key={`${prod.sku}-${i}`} className={`transition-colors ${hasProblems ? 'bg-red-500/4 hover:bg-red-500/6' : 'hover:bg-secondary/15'}`}>
+                                                {/* Alert icon */}
+                                                <td className="p-3 text-center">
+                                                    {hasProblems && <AlertTriangle className="h-3.5 w-3.5 text-red-500 mx-auto" />}
+                                                </td>
+
+                                                {/* Platform */}
                                                 <td className="p-3"><PlatformBadges plataformas={prod.plataformas} /></td>
+
+                                                {/* SKU */}
                                                 <td className="p-3"><span className="font-mono font-bold text-xs">{prod.sku}</span></td>
-                                                <td className="p-3"><span className="text-xs text-muted-foreground/80 max-w-[200px] truncate block">{prod.descripcion}</span></td>
-                                                <td className="p-3 text-right"><span className="text-xs font-mono text-muted-foreground">${prod.precio_original?.toLocaleString('es-AR')}</span></td>
-                                                <td className="p-3 pr-4 text-right">
-                                                    <div className="flex items-center justify-end gap-2">
-                                                        {anomaly && (
-                                                            <span className={`text-[9px] font-black px-1.5 py-0.5 rounded border ${anomaly === 'bajo' ? 'text-red-500 bg-red-500/10 border-red-500/20' : 'text-orange-500 bg-orange-500/10 border-orange-500/20'}`}>
-                                                                {anomaly === 'bajo' ? '↓ BAJO' : '↑ ALTO'}
-                                                            </span>
+
+                                                {/* Descripción + price shock warnings */}
+                                                <td className="p-3">
+                                                    <span className="text-xs text-muted-foreground/80 max-w-[180px] truncate block">{prod.descripcion}</span>
+                                                    {(hasBajaMeli || hasAlzaMeli) && liveMeli && (
+                                                        <div className="mt-1.5 flex items-center gap-1">
+                                                            <div className="w-3 h-3 rounded-sm overflow-hidden bg-white flex-shrink-0">
+                                                                <Image src="/logos/meli.png" alt="ML" width={10} height={10} className="object-contain" />
+                                                            </div>
+                                                            <PriceShockBadge kind={hasBajaMeli ? 'baja' : 'alza'} actualPrice={liveMeli} newPrice={prod.precio_final ?? 0} platform="meli" />
+                                                        </div>
+                                                    )}
+                                                    {(hasBajaTN || hasAlzaTN) && liveTN && (
+                                                        <div className="mt-1 flex items-center gap-1">
+                                                            <div className="w-3 h-3 rounded-sm overflow-hidden bg-white flex-shrink-0">
+                                                                <Image src="/logos/tiendanube.png" alt="TN" width={10} height={10} className="object-contain" />
+                                                            </div>
+                                                            <PriceShockBadge kind={hasBajaTN ? 'baja' : 'alza'} actualPrice={liveTN} newPrice={prod.precio_final ?? 0} platform="tn" />
+                                                        </div>
+                                                    )}
+                                                </td>
+
+                                                {/* Costo proveedor */}
+                                                <td className="p-3 text-right align-top">
+                                                    <span className="text-xs font-mono text-muted-foreground">${formatARS(prod.precio_original ?? 0)}</span>
+                                                </td>
+
+                                                {/* Precio actual publicado */}
+                                                <td className="p-3 text-right align-top">
+                                                    {liveRef != null ? (
+                                                        <span className="text-xs font-mono font-semibold text-blue-400">${formatARS(liveRef)}</span>
+                                                    ) : (
+                                                        <span className="text-[10px] text-muted-foreground/30 italic">—</span>
+                                                    )}
+                                                </td>
+
+                                                {/* Precio nuevo editable */}
+                                                <td className="p-3 pr-4 text-right align-top">
+                                                    <div className="flex flex-col items-end gap-1.5">
+                                                        {kinds.includes('bajo_costo') && (
+                                                            <span className="text-[9px] font-black px-1.5 py-0.5 rounded border text-red-500 bg-red-500/10 border-red-500/20">↓ BAJO COSTO</span>
+                                                        )}
+                                                        {kinds.includes('alto_costo') && (
+                                                            <span className="text-[9px] font-black px-1.5 py-0.5 rounded border text-orange-500 bg-orange-500/10 border-orange-500/20">↑ ALTO COSTO</span>
                                                         )}
                                                         <input
                                                             type="number"
                                                             value={prod.precio_final ?? ''}
                                                             onChange={(e) => updatePrecioFinal(prod.sku, parseFloat(e.target.value))}
-                                                            className={`w-[100px] text-right font-black rounded-lg border bg-transparent py-1.5 px-2.5 text-sm outline-none transition-colors focus:ring-1 ${anomaly ? 'border-red-500/40 text-red-500 focus:ring-red-500/20 focus:border-red-500/60' : 'border-border/50 focus:ring-primary/20 focus:border-primary/40'}`}
+                                                            className={`w-[110px] text-right font-black rounded-lg border bg-transparent py-1.5 px-2.5 text-sm outline-none transition-all focus:ring-1 ${hasProblems
+                                                                ? 'border-red-500/50 text-red-400 focus:ring-red-500/20 focus:border-red-500/70 shadow-sm shadow-red-500/10'
+                                                                : 'border-border/50 focus:ring-primary/20 focus:border-primary/40'
+                                                                }`}
                                                         />
                                                     </div>
                                                 </td>
@@ -495,6 +861,121 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                                     })}
                                 </tbody>
                             </table>
+                        </div>
+
+                        {/* ── Controles de paginación ── */}
+                        <PaginationControls
+                            currentPage={currentPage}
+                            totalPages={totalPages}
+                            totalItems={processedResults.length}
+                            onPrev={() => setCurrentPage(p => Math.max(1, p - 1))}
+                            onNext={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                        />
+                    </div>
+
+                    {/* ── ESCUDO LEGAL + Botones de sync ── */}
+                    <div className="space-y-3">
+                        <LegalCheckbox checked={legalConfirmed} onChange={setLegalConfirmed} />
+
+                        <div className={`flex flex-wrap gap-3 items-center p-4 rounded-2xl border transition-all duration-200 ${legalConfirmed ? 'bg-card border-border/60' : 'bg-muted/20 border-border/40'}`}>
+                            <div className="flex items-center gap-2 text-xs font-bold text-muted-foreground flex-shrink-0">
+                                {legalConfirmed
+                                    ? <><ShieldCheck className="h-3.5 w-3.5 text-emerald-500" /> Listo para sincronizar</>
+                                    : <><ShieldAlert className="h-3.5 w-3.5 text-muted-foreground/50" /> Confirmá antes de sincronizar</>
+                                }
+                            </div>
+                            <div className="flex gap-2 ml-auto flex-wrap">
+                                <button
+                                    onClick={canSync && integraciones?.meli_access_token ? handleSyncMeLi : undefined}
+                                    disabled={!canSync || !integraciones?.meli_access_token}
+                                    title={
+                                        !legalConfirmed
+                                            ? 'Confirmá los términos primero'
+                                            : !integraciones?.meli_access_token
+                                                ? 'Conectá Mercado Libre en Integraciones'
+                                                : ''
+                                    }
+                                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm transition-all duration-200 ${canSync && integraciones?.meli_access_token
+                                        ? 'bg-[#FFE600] text-[#2D3277] hover:opacity-90 shadow-md shadow-amber-500/20 hover:shadow-amber-500/30 hover:scale-[1.02]'
+                                        : 'bg-secondary/50 text-muted-foreground/40 cursor-not-allowed border border-border/40'
+                                        }`}
+                                >
+                                    {loading ? <Loader2 className="animate-spin h-4 w-4" /> : <Image src="/logos/meli.png" width={16} height={16} alt="meli" className="rounded-sm" />}
+                                    {integraciones?.meli_access_token ? 'Actualizar MeLi' : 'MeLi sin conectar'}
+                                </button>
+                                <button
+                                    onClick={canSync && integraciones?.tiendanube_access_token ? handleSyncTiendaNube : undefined}
+                                    disabled={!canSync || !integraciones?.tiendanube_access_token}
+                                    title={
+                                        !legalConfirmed
+                                            ? 'Confirmá los términos primero'
+                                            : !integraciones?.tiendanube_access_token
+                                                ? 'Conectá Tienda Nube en Integraciones'
+                                                : ''
+                                    }
+                                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm transition-all duration-200 ${canSync && integraciones?.tiendanube_access_token
+                                        ? 'bg-[#0070F0] text-white hover:opacity-90 shadow-md shadow-blue-500/20 hover:shadow-blue-500/30 hover:scale-[1.02]'
+                                        : 'bg-secondary/50 text-muted-foreground/40 cursor-not-allowed border border-border/40'
+                                        }`}
+                                >
+                                    {loading ? <Loader2 className="animate-spin h-4 w-4" /> : <Image src="/logos/tiendanube.png" width={16} height={16} alt="tn" className="rounded-sm" />}
+                                    {integraciones?.tiendanube_access_token ? 'Actualizar TN' : 'TN sin conectar'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            )}
+
+            {/* ── MODAL DE PROGRESO ── */}
+            {syncProgress.isOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4">
+                    <div className="bg-card border border-border/60 p-6 rounded-3xl shadow-2xl w-full max-w-md space-y-6">
+                        <div className="text-center space-y-1.5">
+                            <h3 className="text-xl font-black text-foreground tracking-tight">
+                                Sincronizando {syncProgress.platform}
+                            </h3>
+                            <p className="text-xs font-bold text-muted-foreground">
+                                Procesando lote {Math.ceil(syncProgress.current / CHUNK_SIZE)} de {Math.ceil(syncProgress.total / CHUNK_SIZE)}
+                            </p>
+                        </div>
+
+                        <div className="space-y-2">
+                            <div className="w-full bg-secondary/50 rounded-full h-4 overflow-hidden border border-border/40 p-0.5">
+                                <div
+                                    className="bg-primary h-full rounded-full transition-all duration-500 ease-out flex items-center justify-end pr-2"
+                                    style={{ width: `${Math.max(5, Math.round((syncProgress.current / syncProgress.total) * 100))}%` }}
+                                >
+                                    <span className="text-[9px] font-black text-primary-foreground/80 mix-blend-overlay">
+                                        {Math.round((syncProgress.current / syncProgress.total) * 100)}%
+                                    </span>
+                                </div>
+                            </div>
+                            <div className="flex justify-between text-xs font-bold text-muted-foreground">
+                                <span>{syncProgress.current} listos</span>
+                                <span>{syncProgress.total} total</span>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-2 text-center pt-2 border-t border-border/40">
+                            <div className="bg-emerald-500/10 rounded-xl py-2 border border-emerald-500/20">
+                                <span className="block text-emerald-500 font-black text-lg">{syncProgress.updated}</span>
+                                <span className="text-[9px] font-bold text-emerald-500/80 uppercase">OK</span>
+                            </div>
+                            <div className="bg-amber-500/10 rounded-xl py-2 border border-amber-500/20">
+                                <span className="block text-amber-500 font-black text-lg">{syncProgress.notFound}</span>
+                                <span className="text-[9px] font-bold text-amber-500/80 uppercase">Sin Match</span>
+                            </div>
+                            <div className="bg-red-500/10 rounded-xl py-2 border border-red-500/20">
+                                <span className="block text-red-500 font-black text-lg">{syncProgress.errors}</span>
+                                <span className="text-[9px] font-bold text-red-500/80 uppercase">Error</span>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center justify-center gap-2 mt-4 text-[11px] text-muted-foreground/60 font-semibold bg-secondary/30 py-2 rounded-lg">
+                            <Loader2 className="animate-spin h-3.5 w-3.5" />
+                            Por favor, no cierres esta pestaña...
                         </div>
                     </div>
                 </div>
