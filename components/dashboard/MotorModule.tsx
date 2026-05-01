@@ -11,7 +11,7 @@ import {
     Loader2, Download, ArrowLeft, Save, Upload, CheckCircle2,
     Zap, AlertTriangle, DatabaseZap, Filter, FileSpreadsheet,
     Info, ShieldAlert, ShieldCheck, TrendingDown, TrendingUp, Scale,
-    ChevronLeft, ChevronRight
+    ChevronLeft, ChevronRight, Search, X
 } from 'lucide-react'
 import Image from 'next/image'
 import { StepIndicator, MappingButton, PlatformBadges } from './SharedUI'
@@ -19,7 +19,7 @@ import { StepIndicator, MappingButton, PlatformBadges } from './SharedUI'
 // ─────────────────────────────────────────────────────────────────
 // CONSTANTES
 // ─────────────────────────────────────────────────────────────────
-const PAGE_SIZE = 100
+const PAGE_SIZE = 30
 const CHUNK_SIZE = 200
 
 // ─────────────────────────────────────────────────────────────────
@@ -223,6 +223,7 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
     const [results, setResults] = useState<any[]>([])
     const [filterMeli, setFilterMeli] = useState(false)
     const [filterTN, setFilterTN] = useState(false)
+    const [searchQuery, setSearchQuery] = useState('')
     const [plantillas, setPlantillas] = useState<any[]>([])
     const [legalConfirmed, setLegalConfirmed] = useState(false)
 
@@ -236,6 +237,7 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
 
     const deferredFilterMeli = useDeferredValue(filterMeli)
     const deferredFilterTN = useDeferredValue(filterTN)
+    const deferredSearchQuery = useDeferredValue(searchQuery)
     const [, startTransition] = useTransition()
 
     const fileInputRef = useRef<HTMLInputElement>(null)
@@ -244,8 +246,8 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
     // Reset checkbox legal cuando llegan resultados nuevos
     useEffect(() => { setLegalConfirmed(false) }, [results])
 
-    // Reset página cuando cambia el conjunto filtrado
-    useEffect(() => { setCurrentPage(1) }, [results, deferredFilterMeli, deferredFilterTN])
+    // Reset página cuando cambia el conjunto filtrado o la búsqueda
+    useEffect(() => { setCurrentPage(1) }, [results, deferredFilterMeli, deferredFilterTN, deferredSearchQuery])
 
     useEffect(() => {
         if (user) {
@@ -404,25 +406,53 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
 
         try {
             for (let i = 0; i < results.length; i += CHUNK_SIZE) {
-                // El slice mantiene meli_item_id, tn_product_id, tn_variant_id intactos
                 const chunk = results.slice(i, i + CHUNK_SIZE)
-                const res = await fetch('https://api.kokihawk.com.ar/sincronizar-tiendanube', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        access_token: integraciones.tiendanube_access_token,
-                        store_id: integraciones.tiendanube_store_id,
-                        productos: chunk,
-                    }),
-                })
-                const data = await res.json()
+
+                let res: Response
+                try {
+                    res = await fetch('https://api.kokihawk.com.ar/sincronizar-tiendanube', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            access_token: integraciones.tiendanube_access_token,
+                            store_id: integraciones.tiendanube_store_id,
+                            productos: chunk,
+                        }),
+                    })
+                } catch (fetchErr) {
+                    console.error(`[TN] Error de red en lote ${i / CHUNK_SIZE + 1}:`, fetchErr)
+                    stats.errores += chunk.length
+                    setSyncProgress(prev => ({ ...prev, current: Math.min(i + CHUNK_SIZE, results.length), errors: stats.errores }))
+                    continue
+                }
+
+                if (!res.ok) {
+                    const errText = await res.text().catch(() => res.statusText)
+                    console.error(`[TN] HTTP ${res.status} en lote ${i / CHUNK_SIZE + 1}:`, errText)
+                    stats.errores += chunk.length
+                    setSyncProgress(prev => ({ ...prev, current: Math.min(i + CHUNK_SIZE, results.length), errors: stats.errores }))
+                    continue
+                }
+
+                let data: any
+                try {
+                    data = await res.json()
+                } catch (jsonErr) {
+                    console.error(`[TN] JSON inválido en lote ${i / CHUNK_SIZE + 1}:`, jsonErr)
+                    stats.errores += chunk.length
+                    setSyncProgress(prev => ({ ...prev, current: Math.min(i + CHUNK_SIZE, results.length), errors: stats.errores }))
+                    continue
+                }
+
                 if (data.status === 'success') {
                     stats.actualizados += data.stats.actualizados
                     stats.no_encontrados += data.stats.no_encontrados
                     stats.errores += data.stats.errores
                 } else {
-                    console.error('Error en lote TN:', data.mensaje)
+                    console.error('[TN] Error de API en lote:', data.mensaje)
+                    stats.errores += chunk.length
                 }
+
                 setSyncProgress(prev => ({
                     ...prev,
                     current: Math.min(i + CHUNK_SIZE, results.length),
@@ -432,8 +462,9 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                 }))
             }
             alert(`☁️ TN COMPLETADO:\n✅ Actualizados: ${stats.actualizados}\n❌ No encontrados: ${stats.no_encontrados}\n⚠️ Errores: ${stats.errores}`)
-        } catch {
-            alert('Error de red al sincronizar. Verificá tu conexión.')
+        } catch (err) {
+            console.error('[TN] Error inesperado en sincronización:', err)
+            alert(`Error inesperado al sincronizar con Tienda Nube.\nRevisá la consola para más detalles.`)
         } finally {
             setSyncProgress(prev => ({ ...prev, isOpen: false }))
         }
@@ -453,20 +484,38 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
 
         try {
             for (let i = 0; i < results.length; i += CHUNK_SIZE) {
-                // El slice mantiene meli_item_id intacto — el backend hace PUT directo
                 const chunk = results.slice(i, i + CHUNK_SIZE)
-                const res = await fetch('https://api.kokihawk.com.ar/sincronizar-meli', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        access_token: currentToken,
-                        refresh_token: currentRefresh,
-                        productos: chunk,
-                    }),
-                })
-                const data = await res.json()
+
+                let res: Response
+                try {
+                    res = await fetch('https://api.kokihawk.com.ar/sincronizar-meli', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            access_token: currentToken,
+                            refresh_token: currentRefresh,
+                            productos: chunk,
+                        }),
+                    })
+                } catch (fetchErr) {
+                    console.error(`[MeLi] Error de red en lote ${i / CHUNK_SIZE + 1}:`, fetchErr)
+                    stats.errores += chunk.length
+                    setSyncProgress(prev => ({ ...prev, current: Math.min(i + CHUNK_SIZE, results.length), errors: stats.errores }))
+                    continue
+                }
+
+                let data: any
+                try {
+                    data = await res.json()
+                } catch (jsonErr) {
+                    console.error(`[MeLi] JSON inválido en lote ${i / CHUNK_SIZE + 1} (HTTP ${res.status}):`, jsonErr)
+                    stats.errores += chunk.length
+                    setSyncProgress(prev => ({ ...prev, current: Math.min(i + CHUNK_SIZE, results.length), errors: stats.errores }))
+                    continue
+                }
 
                 if (res.status === 401) {
+                    console.error('[MeLi] Token expirado:', data.mensaje)
                     alert(data.mensaje)
                     setIntegraciones((prev: any) => ({ ...prev, meli_access_token: null }))
                     break
@@ -487,6 +536,9 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                         }).eq('user_id', user.id)
                         setIntegraciones((prev: any) => ({ ...prev, meli_access_token: currentToken, meli_refresh_token: currentRefresh }))
                     }
+                } else {
+                    console.error(`[MeLi] Error de API en lote ${i / CHUNK_SIZE + 1}:`, data.mensaje)
+                    stats.errores += chunk.length
                 }
 
                 setSyncProgress(prev => ({
@@ -498,8 +550,9 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                 }))
             }
             alert(`📦 M.LIBRE COMPLETADO:\n\n✅ Actualizados: ${stats.actualizados}\n❌ No encontrados: ${stats.no_encontrados}\n⚠️ Errores: ${stats.errores}`)
-        } catch {
-            alert('Error de red al sincronizar. Verificá tu conexión.')
+        } catch (err) {
+            console.error('[MeLi] Error inesperado en sincronización:', err)
+            alert(`Error inesperado al sincronizar con Mercado Libre.\nRevisá la consola para más detalles.`)
         } finally {
             setSyncProgress(prev => ({ ...prev, isOpen: false }))
         }
@@ -509,17 +562,26 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
         setResults(prev => prev.map(p => p.sku === sku ? { ...p, precio_final: newValue } : p))
     }, [])
 
-    // ── Lista filtrada y ordenada (todos los items, no paginada aún) ──
+    // ── Lista filtrada, buscada y ordenada (todos los items, no paginada aún) ──
     const processedResults = useMemo(() => {
         let filtered = [...results]
+        // Filtro por plataforma
         if (deferredFilterMeli && !deferredFilterTN) filtered = filtered.filter(p => p.plataformas?.includes('meli'))
         else if (deferredFilterTN && !deferredFilterMeli) filtered = filtered.filter(p => p.plataformas?.includes('tn'))
         else if (deferredFilterMeli && deferredFilterTN) filtered = filtered.filter(p => p.plataformas?.includes('meli') || p.plataformas?.includes('tn'))
+        // Filtro por búsqueda (SKU o descripción)
+        if (deferredSearchQuery.trim()) {
+            const q = deferredSearchQuery.trim().toLowerCase()
+            filtered = filtered.filter(p =>
+                String(p.sku ?? '').toLowerCase().includes(q) ||
+                String(p.descripcion ?? '').toLowerCase().includes(q)
+            )
+        }
         return filtered.sort((a, b) => {
             const aH = hasAnomaly(a), bH = hasAnomaly(b)
             return aH === bH ? 0 : aH ? -1 : 1
         })
-    }, [results, deferredFilterMeli, deferredFilterTN])
+    }, [results, deferredFilterMeli, deferredFilterTN, deferredSearchQuery])
 
     // ── Slice paginado para el DOM — máximo PAGE_SIZE nodos en tabla ──
     const totalPages = Math.max(1, Math.ceil(processedResults.length / PAGE_SIZE))
@@ -529,7 +591,7 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
     }, [processedResults, currentPage])
 
     const anomalyCount = useMemo(() => results.filter(hasAnomaly).length, [results])
-    const isFilterPending = filterMeli !== deferredFilterMeli || filterTN !== deferredFilterTN
+    const isFilterPending = filterMeli !== deferredFilterMeli || filterTN !== deferredFilterTN || searchQuery !== deferredSearchQuery
     const canProcess = mapping.sku !== -1 && mapping.precio !== -1
     const canSync = legalConfirmed && !loading
 
@@ -743,8 +805,60 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                         </div>
                     </div>
 
-                    {/* Filter bar */}
-                    <div className="flex items-center gap-3 bg-card border border-border/60 rounded-2xl px-5 py-3 shadow-sm">
+                    {/* ── ESCUDO LEGAL + Botones de sync — arriba de la tabla ── */}
+                    <div className="space-y-3">
+                        <LegalCheckbox checked={legalConfirmed} onChange={setLegalConfirmed} />
+
+                        <div className={`flex flex-wrap gap-3 items-center p-4 rounded-2xl border transition-all duration-200 ${legalConfirmed ? 'bg-card border-border/60' : 'bg-muted/20 border-border/40'}`}>
+                            <div className="flex items-center gap-2 text-xs font-bold text-muted-foreground flex-shrink-0">
+                                {legalConfirmed
+                                    ? <><ShieldCheck className="h-3.5 w-3.5 text-emerald-500" /> Listo para sincronizar</>
+                                    : <><ShieldAlert className="h-3.5 w-3.5 text-muted-foreground/50" /> Confirmá antes de sincronizar</>
+                                }
+                            </div>
+                            <div className="flex gap-2 ml-auto flex-wrap">
+                                <button
+                                    onClick={canSync && integraciones?.meli_access_token ? handleSyncMeLi : undefined}
+                                    disabled={!canSync || !integraciones?.meli_access_token}
+                                    title={
+                                        !legalConfirmed
+                                            ? 'Confirmá los términos primero'
+                                            : !integraciones?.meli_access_token
+                                                ? 'Conectá Mercado Libre en Integraciones'
+                                                : ''
+                                    }
+                                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm transition-all duration-200 ${canSync && integraciones?.meli_access_token
+                                        ? 'bg-[#FFE600] text-[#2D3277] hover:opacity-90 shadow-md shadow-amber-500/20 hover:shadow-amber-500/30 hover:scale-[1.02]'
+                                        : 'bg-secondary/50 text-muted-foreground/40 cursor-not-allowed border border-border/40'
+                                        }`}
+                                >
+                                    {loading ? <Loader2 className="animate-spin h-4 w-4" /> : <Image src="/logos/meli.png" width={16} height={16} alt="meli" className="rounded-sm" />}
+                                    {integraciones?.meli_access_token ? 'Actualizar MeLi' : 'MeLi sin conectar'}
+                                </button>
+                                <button
+                                    onClick={canSync && integraciones?.tiendanube_access_token ? handleSyncTiendaNube : undefined}
+                                    disabled={!canSync || !integraciones?.tiendanube_access_token}
+                                    title={
+                                        !legalConfirmed
+                                            ? 'Confirmá los términos primero'
+                                            : !integraciones?.tiendanube_access_token
+                                                ? 'Conectá Tienda Nube en Integraciones'
+                                                : ''
+                                    }
+                                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm transition-all duration-200 ${canSync && integraciones?.tiendanube_access_token
+                                        ? 'bg-[#0070F0] text-white hover:opacity-90 shadow-md shadow-blue-500/20 hover:shadow-blue-500/30 hover:scale-[1.02]'
+                                        : 'bg-secondary/50 text-muted-foreground/40 cursor-not-allowed border border-border/40'
+                                        }`}
+                                >
+                                    {loading ? <Loader2 className="animate-spin h-4 w-4" /> : <Image src="/logos/tiendanube.png" width={16} height={16} alt="tn" className="rounded-sm" />}
+                                    {integraciones?.tiendanube_access_token ? 'Actualizar TN' : 'TN sin conectar'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Filter bar + búsqueda */}
+                    <div className="flex flex-wrap items-center gap-2 bg-card border border-border/60 rounded-2xl px-4 py-3 shadow-sm">
                         <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground flex items-center gap-1.5 flex-shrink-0">
                             <Filter className="h-3 w-3" /> Filtrar:
                         </span>
@@ -756,7 +870,27 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                             <Switch checked={filterTN} onCheckedChange={(v) => startTransition(() => setFilterTN(v))} className="scale-75" />
                             <span className={`text-xs font-bold ${filterTN ? 'text-blue-400' : 'text-muted-foreground group-hover:text-foreground'} transition-colors`}>Tienda Nube</span>
                         </label>
-                        <span className={`ml-auto text-xs font-bold tabular-nums transition-opacity ${isFilterPending ? 'text-muted-foreground/40' : 'text-muted-foreground'}`}>
+
+                        {/* Barra de búsqueda */}
+                        <div className="relative ml-auto flex-1 min-w-[180px] max-w-xs">
+                            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/50 pointer-events-none" />
+                            <Input
+                                value={searchQuery}
+                                onChange={(e) => startTransition(() => setSearchQuery(e.target.value))}
+                                placeholder="Buscar SKU o descripción..."
+                                className="h-8 pl-8 pr-8 text-xs font-medium bg-secondary/40 border-border/60 focus:border-primary/50 focus:bg-secondary/60 placeholder:text-muted-foreground/40"
+                            />
+                            {searchQuery && (
+                                <button
+                                    onClick={() => setSearchQuery('')}
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+                                >
+                                    <X className="h-3.5 w-3.5" />
+                                </button>
+                            )}
+                        </div>
+
+                        <span className={`text-xs font-bold tabular-nums flex-shrink-0 transition-opacity ${isFilterPending ? 'text-muted-foreground/40' : 'text-muted-foreground'}`}>
                             {processedResults.length} / {results.length}
                         </span>
                     </div>
@@ -871,58 +1005,6 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                             onPrev={() => setCurrentPage(p => Math.max(1, p - 1))}
                             onNext={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                         />
-                    </div>
-
-                    {/* ── ESCUDO LEGAL + Botones de sync ── */}
-                    <div className="space-y-3">
-                        <LegalCheckbox checked={legalConfirmed} onChange={setLegalConfirmed} />
-
-                        <div className={`flex flex-wrap gap-3 items-center p-4 rounded-2xl border transition-all duration-200 ${legalConfirmed ? 'bg-card border-border/60' : 'bg-muted/20 border-border/40'}`}>
-                            <div className="flex items-center gap-2 text-xs font-bold text-muted-foreground flex-shrink-0">
-                                {legalConfirmed
-                                    ? <><ShieldCheck className="h-3.5 w-3.5 text-emerald-500" /> Listo para sincronizar</>
-                                    : <><ShieldAlert className="h-3.5 w-3.5 text-muted-foreground/50" /> Confirmá antes de sincronizar</>
-                                }
-                            </div>
-                            <div className="flex gap-2 ml-auto flex-wrap">
-                                <button
-                                    onClick={canSync && integraciones?.meli_access_token ? handleSyncMeLi : undefined}
-                                    disabled={!canSync || !integraciones?.meli_access_token}
-                                    title={
-                                        !legalConfirmed
-                                            ? 'Confirmá los términos primero'
-                                            : !integraciones?.meli_access_token
-                                                ? 'Conectá Mercado Libre en Integraciones'
-                                                : ''
-                                    }
-                                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm transition-all duration-200 ${canSync && integraciones?.meli_access_token
-                                        ? 'bg-[#FFE600] text-[#2D3277] hover:opacity-90 shadow-md shadow-amber-500/20 hover:shadow-amber-500/30 hover:scale-[1.02]'
-                                        : 'bg-secondary/50 text-muted-foreground/40 cursor-not-allowed border border-border/40'
-                                        }`}
-                                >
-                                    {loading ? <Loader2 className="animate-spin h-4 w-4" /> : <Image src="/logos/meli.png" width={16} height={16} alt="meli" className="rounded-sm" />}
-                                    {integraciones?.meli_access_token ? 'Actualizar MeLi' : 'MeLi sin conectar'}
-                                </button>
-                                <button
-                                    onClick={canSync && integraciones?.tiendanube_access_token ? handleSyncTiendaNube : undefined}
-                                    disabled={!canSync || !integraciones?.tiendanube_access_token}
-                                    title={
-                                        !legalConfirmed
-                                            ? 'Confirmá los términos primero'
-                                            : !integraciones?.tiendanube_access_token
-                                                ? 'Conectá Tienda Nube en Integraciones'
-                                                : ''
-                                    }
-                                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm transition-all duration-200 ${canSync && integraciones?.tiendanube_access_token
-                                        ? 'bg-[#0070F0] text-white hover:opacity-90 shadow-md shadow-blue-500/20 hover:shadow-blue-500/30 hover:scale-[1.02]'
-                                        : 'bg-secondary/50 text-muted-foreground/40 cursor-not-allowed border border-border/40'
-                                        }`}
-                                >
-                                    {loading ? <Loader2 className="animate-spin h-4 w-4" /> : <Image src="/logos/tiendanube.png" width={16} height={16} alt="tn" className="rounded-sm" />}
-                                    {integraciones?.tiendanube_access_token ? 'Actualizar TN' : 'TN sin conectar'}
-                                </button>
-                            </div>
-                        </div>
                     </div>
 
                 </div>
