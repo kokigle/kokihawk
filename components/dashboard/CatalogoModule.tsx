@@ -205,7 +205,7 @@ export default function CatalogoModule({ userId, setActiveModule }: Props) {
                 while (keepFetching) {
                     const { data, error } = await supabase
                         .from('catalogo_precios')
-                        .select('sku, descripcion, precio_final, plataformas')
+                        .select('sku, descripcion, precio_final, precio_meli, precio_tn, sku_meli, sku_tn, proveedor, plataformas')
                         .eq('user_id', userId)
                         .order('sku', { ascending: true })
                         .range(from, to)
@@ -232,6 +232,8 @@ export default function CatalogoModule({ userId, setActiveModule }: Props) {
         const q = deferredSearch.toLowerCase()
         return filtered.filter(p =>
             String(p.sku ?? '').toLowerCase().includes(q) ||
+            String(p.sku_meli ?? '').toLowerCase().includes(q) ||
+            String(p.sku_tn ?? '').toLowerCase().includes(q) ||
             String(p.descripcion ?? '').toLowerCase().includes(q)
         )
     }, [catalogo, deferredSearch, deferredMeli, deferredTN])
@@ -367,10 +369,13 @@ export default function CatalogoModule({ userId, setActiveModule }: Props) {
                     <table className="w-full border-collapse min-w-[500px]">
                         <thead className="bg-secondary/50 sticky top-0 z-10 border-b border-border/60">
                             <tr>
-                                <th className="text-left px-5 py-3.5 text-[10px] font-black uppercase tracking-widest text-muted-foreground w-36 md:w-44">Código / SKU</th>
-                                <th className="text-center px-4 py-3.5 text-[10px] font-black uppercase tracking-widest text-muted-foreground w-24">Tiendas</th>
-                                <th className="text-left px-5 py-3.5 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Descripción</th>
-                                <th className="text-right px-5 py-3.5 text-[10px] font-black uppercase tracking-widest text-primary w-44">Precio de Venta</th>
+                                <th className="text-left px-5 py-3.5 text-[10px] font-black uppercase tracking-widest text-muted-foreground w-36">SKU Prov.</th>
+                                <th className="text-left px-3 py-3.5 text-[10px] font-black uppercase tracking-widest text-emerald-400 w-28">Proveedor</th>
+                                <th className="text-center px-3 py-3.5 text-[10px] font-black uppercase tracking-widest text-muted-foreground w-20">Tiendas</th>
+                                <th className="text-left px-4 py-3.5 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Descripción</th>
+                                <th className="text-right px-3 py-3.5 text-[10px] font-black uppercase tracking-widest text-primary w-24"><span className="inline-flex items-center gap-1"><Image src="/logos/icon.png" alt="KH" width={12} height={12} className="rounded-sm" /> Venta</span></th>
+                                <th className="text-right px-3 py-3.5 text-[10px] font-black uppercase tracking-widest text-amber-400 w-24"><span className="inline-flex items-center gap-1"><Image src="/logos/meli.png" alt="ML" width={12} height={12} className="rounded-sm" /> MeLi</span></th>
+                                <th className="text-right px-4 py-3.5 text-[10px] font-black uppercase tracking-widest text-blue-400 w-24"><span className="inline-flex items-center gap-1"><Image src="/logos/tiendanube.png" alt="TN" width={12} height={12} className="rounded-sm" /> TN</span></th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-border/20">
@@ -389,25 +394,44 @@ export default function CatalogoModule({ userId, setActiveModule }: Props) {
                                         key={prod.sku ?? i}
                                         className={`transition-colors group ${isPending ? 'opacity-60' : 'hover:bg-secondary/20'}`}
                                     >
-                                        <td className="px-5 py-3.5">
+                                        <td className="px-5 py-3">
                                             <span className="font-mono text-sm font-bold text-foreground tracking-wide">{prod.sku}</span>
+                                            {(prod.sku_meli || prod.sku_tn) && (
+                                                <div className="flex gap-2 mt-0.5">
+                                                    {prod.sku_meli && <span className="text-[9px] font-mono text-amber-400/60">ML: {prod.sku_meli}</span>}
+                                                    {prod.sku_tn && <span className="text-[9px] font-mono text-blue-400/60">TN: {prod.sku_tn}</span>}
+                                                </div>
+                                            )}
                                         </td>
-                                        <td className="px-4 py-3.5 text-center">
+                                        <td className="px-3 py-3">
+                                            <span className="text-xs font-bold text-emerald-400/80">{prod.proveedor ?? 'General'}</span>
+                                        </td>
+                                        <td className="px-3 py-3 text-center">
                                             <PlatformBadges plataformas={prod.plataformas} />
                                         </td>
-                                        <td className="px-5 py-3.5">
+                                        <td className="px-4 py-3">
                                             <span className="text-sm text-foreground/75 leading-snug line-clamp-1">{prod.descripcion}</span>
                                         </td>
-                                        <td className="px-5 py-3.5 text-right">
-                                            <span className="text-xl font-black text-foreground tabular-nums tracking-tight">
+                                        <td className="px-3 py-3 text-right">
+                                            <span className="text-base font-black text-foreground tabular-nums tracking-tight">
                                                 ${prod.precio_final?.toLocaleString('es-AR') ?? '—'}
+                                            </span>
+                                        </td>
+                                        <td className="px-3 py-3 text-right">
+                                            <span className="text-base font-bold text-amber-300 tabular-nums tracking-tight">
+                                                {prod.precio_meli != null ? `$${prod.precio_meli.toLocaleString('es-AR')}` : <span className="text-muted-foreground/30 text-sm">—</span>}
+                                            </span>
+                                        </td>
+                                        <td className="px-4 py-3 text-right">
+                                            <span className="text-base font-bold text-blue-300 tabular-nums tracking-tight">
+                                                {prod.precio_tn != null ? `$${prod.precio_tn.toLocaleString('es-AR')}` : <span className="text-muted-foreground/30 text-sm">—</span>}
                                             </span>
                                         </td>
                                     </tr>
                                 ))
                             ) : (
                                 <tr>
-                                    <td colSpan={4}>
+                                    <td colSpan={7}>
                                         <div className="flex flex-col items-center justify-center py-24 gap-4 text-center px-6">
                                             {catalogo.length === 0 ? (
                                                 <>

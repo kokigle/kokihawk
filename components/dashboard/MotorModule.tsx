@@ -228,7 +228,14 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
     const [file, setFile] = useState<File | null>(null)
     const [loading, setLoading] = useState(false)
     const [aumento, setAumento] = useState('45')
+    const [ajusteMeli, setAjusteMeli] = useState('0')
+    const [ajusteTN, setAjusteTN] = useState('0')
     const [redondeo, setRedondeo] = useState('0')
+    const [catalogMaps, setCatalogMaps] = useState<any>(null)
+    const [proveedores, setProveedores] = useState<{id: string, nombre: string}[]>([])
+    const [proveedorSel, setProveedorSel] = useState('')
+    const [newProvName, setNewProvName] = useState('')
+    const [showNewProv, setShowNewProv] = useState(false)
     const [previewData, setPreviewData] = useState<any[]>([])
     const [mapping, setMapping] = useState({ sku: -1, desc: -1, precio: -1, startRow: 0 })
     const [results, setResults] = useState<any[]>([])
@@ -273,8 +280,27 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                 .eq('user_id', user.id)
                 .order('created_at', { ascending: false })
                 .then(({ data }) => { if (data) setDiccionarios(data) })
+            // Cargar proveedores del usuario
+            supabase
+                .from('proveedores')
+                .select('id, nombre')
+                .eq('user_id', user.id)
+                .order('nombre')
+                .then(({ data }) => { if (data) setProveedores(data) })
         }
     }, [user]) // eslint-disable-line
+
+    const crearProveedor = async () => {
+        const name = newProvName.trim()
+        if (!name) return
+        const { data, error } = await supabase.from('proveedores').insert({ user_id: user.id, nombre: name }).select('id, nombre').single()
+        if (error) { toast.error('Error al crear proveedor: ' + error.message); return }
+        setProveedores(prev => [...prev, data].sort((a, b) => a.nombre.localeCompare(b.nombre)))
+        setProveedorSel(data.nombre)
+        setNewProvName('')
+        setShowNewProv(false)
+        toast.success(`Proveedor "${data.nombre}" creado`)
+    }
 
     const guardarPlantilla = async () => {
         if (!plantillaName.trim()) { setShowPlantillaInput(true); return }
@@ -317,6 +343,8 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
         formData.append('file', file)
         formData.append('proveedor', 'generico')
         formData.append('aumento', aumento)
+        formData.append('ajuste_meli', ajusteMeli)
+        formData.append('ajuste_tn', ajusteTN)
         formData.append('redondeo', redondeo)
         formData.append('col_sku', mapping.sku.toString())
         formData.append('col_desc', mapping.desc.toString())
@@ -355,6 +383,7 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                     }))
                 }
                 setResults(data.productos)
+                if (data._catalog_maps) setCatalogMaps(data._catalog_maps)
                 setStep(3)
             } else throw new Error(data.mensaje)
         } catch { toast.error('Error al procesar.') } finally { setLoading(false) }
@@ -364,23 +393,29 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
         if (!results.length) return
         setLoading(true)
         try {
+            const prov = proveedorSel || 'General'
             const uniqueDataMap = new Map()
             results.forEach(p => {
                 const cleanSku = p.sku.toString().trim().toUpperCase()
                 uniqueDataMap.set(cleanSku, {
-                    user_id: user.id, sku: cleanSku,
-                    descripcion: p.descripcion, precio_final: p.precio_final, plataformas: p.plataformas || [],
+                    user_id: user.id, sku: cleanSku, proveedor: prov,
+                    descripcion: p.descripcion, precio_final: p.precio_final,
+                    precio_meli: p.precio_meli ?? null,
+                    precio_tn: p.precio_tn ?? null,
+                    sku_meli: p.sku_meli ?? null,
+                    sku_tn: p.sku_tn ?? null,
+                    plataformas: p.plataformas || [],
                 })
             })
             const dataToSave = Array.from(uniqueDataMap.values())
             for (let i = 0; i < dataToSave.length; i += 1000) {
                 const { error } = await supabase.from('catalogo_precios').upsert(
                     dataToSave.slice(i, i + 1000),
-                    { onConflict: 'user_id, sku' }
+                    { onConflict: 'user_id, sku, proveedor' }
                 )
                 if (error) throw error
             }
-            toast.success(`¡Catálogo actualizado! Se guardaron ${dataToSave.length} productos únicos.`)
+            toast.success(`¡Catálogo actualizado! (${prov}) — ${dataToSave.length} productos.`)
         } catch (err: any) { toast.error('Error al guardar en el catálogo: ' + err.message) }
         finally { setLoading(false) }
     }
@@ -482,8 +517,45 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
 
     // ── Edición por INDEX del array (no por SKU) ──
     const updateField = useCallback((index: number, field: string, value: any) => {
-        setResults(prev => prev.map((p, i) => i === index ? { ...p, [field]: value } : p))
-    }, [])
+        setResults(prev => prev.map((p, i) => {
+            if (i !== index) return p
+            const updated = { ...p, [field]: value }
+
+            // Live SKU lookup: when user edits sku_meli or sku_tn, re-match against catalog
+            if (field === 'sku_meli' && catalogMaps?.meli) {
+                const key = String(value || '').trim().toUpperCase()
+                if (key && catalogMaps.meli.ids[key]) {
+                    updated.meli_item_id = catalogMaps.meli.ids[key]
+                    updated.precio_actual_meli = catalogMaps.meli.precios[key] ?? null
+                    if (!updated.plataformas?.includes('meli')) {
+                        updated.plataformas = [...(updated.plataformas || []), 'meli']
+                    }
+                } else {
+                    updated.meli_item_id = null
+                    updated.precio_actual_meli = null
+                    updated.plataformas = (updated.plataformas || []).filter((x: string) => x !== 'meli')
+                }
+            }
+            if (field === 'sku_tn' && catalogMaps?.tn) {
+                const key = String(value || '').trim().toUpperCase()
+                if (key && catalogMaps.tn.ids[key]) {
+                    const [prodId, varId] = catalogMaps.tn.ids[key]
+                    updated.tn_product_id = prodId
+                    updated.tn_variant_id = varId
+                    updated.precio_actual_tn = catalogMaps.tn.precios[key] ?? null
+                    if (!updated.plataformas?.includes('tn')) {
+                        updated.plataformas = [...(updated.plataformas || []), 'tn']
+                    }
+                } else {
+                    updated.tn_product_id = null
+                    updated.tn_variant_id = null
+                    updated.precio_actual_tn = null
+                    updated.plataformas = (updated.plataformas || []).filter((x: string) => x !== 'tn')
+                }
+            }
+            return updated
+        }))
+    }, [catalogMaps])
 
     // ── Lista filtrada, buscada y ordenada (todos los items, no paginada aún) ──
     const processedResults = useMemo(() => {
@@ -496,6 +568,8 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
             const q = deferredSearchQuery.trim().toLowerCase()
             filtered = filtered.filter(p =>
                 String(p.sku ?? '').toLowerCase().includes(q) ||
+                String(p.sku_meli ?? '').toLowerCase().includes(q) ||
+                String(p.sku_tn ?? '').toLowerCase().includes(q) ||
                 String(p.descripcion ?? '').toLowerCase().includes(q)
             )
         }
@@ -616,6 +690,30 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                                 <Button variant="ghost" size="sm" onClick={() => setStep(1)} className="text-muted-foreground h-8 -ml-1">
                                     <ArrowLeft className="h-3.5 w-3.5 mr-1" /> Cambiar archivo
                                 </Button>
+
+                                {/* Proveedor selector */}
+                                <div className="space-y-1">
+                                    <Label className="text-[9px] font-black uppercase tracking-widest text-emerald-400">Proveedor</Label>
+                                    {showNewProv ? (
+                                        <div className="flex gap-1">
+                                            <Input type="text" value={newProvName} onChange={(e) => setNewProvName(e.target.value)}
+                                                placeholder="Nombre..." autoFocus onKeyDown={(e) => e.key === 'Enter' && crearProveedor()}
+                                                className="h-9 w-32 text-sm bg-secondary/40 border-emerald-500/30 focus:border-emerald-500/50" />
+                                            <Button size="sm" onClick={crearProveedor} className="h-9 px-2 bg-emerald-600 hover:bg-emerald-700 text-xs font-bold">✓</Button>
+                                            <Button size="sm" variant="ghost" onClick={() => setShowNewProv(false)} className="h-9 px-2 text-xs">✕</Button>
+                                        </div>
+                                    ) : (
+                                        <div className="flex gap-1">
+                                            <select value={proveedorSel} onChange={(e) => setProveedorSel(e.target.value)}
+                                                className="h-9 text-sm font-semibold border border-border/60 rounded-lg px-3 outline-none bg-secondary/40 text-foreground focus:border-emerald-500/50">
+                                                <option value="">Seleccionar...</option>
+                                                {proveedores.map(p => <option key={p.id} value={p.nombre}>{p.nombre}</option>)}
+                                            </select>
+                                            <button onClick={() => setShowNewProv(true)} title="Crear proveedor"
+                                                className="h-9 w-9 flex items-center justify-center rounded-lg border border-dashed border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 transition-colors text-lg font-bold">+</button>
+                                        </div>
+                                    )}
+                                </div>
                                 {plantillas.length > 0 && (
                                     <div className="space-y-1">
                                         <Label className="text-[9px] font-black uppercase tracking-widest text-primary">Plantilla guardada</Label>
@@ -648,6 +746,18 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                                     <Label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Aumento %</Label>
                                     <Input type="number" value={aumento} onChange={(e) => setAumento(e.target.value)}
                                         className="h-9 w-24 font-bold text-sm bg-secondary/40 border-border/60 focus:border-primary/50" />
+                                </div>
+                                <div className="space-y-1">
+                                    <Label className="text-[9px] font-black uppercase tracking-widest text-amber-400">Ajuste MeLi %</Label>
+                                    <Input type="number" value={ajusteMeli} onChange={(e) => setAjusteMeli(e.target.value)}
+                                        placeholder="0"
+                                        className="h-9 w-24 font-bold text-sm bg-secondary/40 border-amber-500/30 focus:border-amber-500/50" />
+                                </div>
+                                <div className="space-y-1">
+                                    <Label className="text-[9px] font-black uppercase tracking-widest text-blue-400">Ajuste TN %</Label>
+                                    <Input type="number" value={ajusteTN} onChange={(e) => setAjusteTN(e.target.value)}
+                                        placeholder="0"
+                                        className="h-9 w-24 font-bold text-sm bg-secondary/40 border-blue-500/30 focus:border-blue-500/50" />
                                 </div>
                                 <div className="space-y-1">
                                     <Label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Redondeo</Label>
@@ -901,18 +1011,17 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                     {/* Results table */}
                     <div className="bg-card border border-border/60 rounded-2xl overflow-hidden shadow-sm">
                         <div className={`overflow-x-auto transition-opacity ${isFilterPending ? 'opacity-60' : 'opacity-100'}`}>
-                            <table className="w-full text-sm border-collapse min-w-[900px]">
+                            <table className="w-full text-sm border-collapse min-w-[1000px]">
                                 <thead className="bg-secondary/50 sticky top-0 border-b border-border/60 z-10">
                                     <tr>
                                         <th className="w-8 p-3" />
                                         <th className="text-left p-3 text-[9px] font-black uppercase tracking-widest text-muted-foreground">Plat.</th>
                                         <th className="text-left p-3 text-[9px] font-black uppercase tracking-widest text-muted-foreground">SKU Prov.</th>
-                                        <th className="text-left p-3 text-[9px] font-black uppercase tracking-widest text-violet-400">SKU TN</th>
-                                        <th className="text-left p-3 text-[9px] font-black uppercase tracking-widest text-amber-400">SKU ML</th>
-                                        <th className="text-left p-3 text-[9px] font-black uppercase tracking-widest text-muted-foreground">Descripción</th>
+                                        <th className="text-left p-3 text-[9px] font-black uppercase tracking-widest text-muted-foreground max-w-[160px]">Descripción</th>
                                         <th className="text-right p-3 text-[9px] font-black uppercase tracking-widest text-muted-foreground">Costo</th>
-                                        <th className="text-right p-3 text-[9px] font-black uppercase tracking-widest text-blue-400">Precio Actual ↗</th>
-                                        <th className="text-right p-3 pr-4 text-[9px] font-black uppercase tracking-widest text-primary">Precio Nuevo ✏️</th>
+                                        <th className="text-right p-3 text-[9px] font-black uppercase tracking-widest text-primary"><span className="inline-flex items-center gap-1"><Image src="/logos/icon.png" alt="KH" width={14} height={14} className="rounded-sm" /> Venta</span></th>
+                                        <th className="text-right p-3 text-[9px] font-black uppercase tracking-widest text-amber-400"><span className="inline-flex items-center gap-1"><Image src="/logos/meli.png" alt="ML" width={14} height={14} className="rounded-sm" /> MeLi</span></th>
+                                        <th className="text-right p-3 pr-4 text-[9px] font-black uppercase tracking-widest text-blue-400"><span className="inline-flex items-center gap-1"><Image src="/logos/tiendanube.png" alt="TN" width={14} height={14} className="rounded-sm" /> TN</span></th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-border/20">
@@ -920,13 +1029,6 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                                         const realIndex = results.indexOf(prod)
                                         const kinds = getAnomalies(prod)
                                         const hasProblems = kinds.length > 0
-                                        const liveMeli = prod.precio_actual_meli
-                                        const liveTN = prod.precio_actual_tn
-                                        const liveRef = liveMeli ?? liveTN
-                                        const hasBajaMeli = kinds.includes('shock_baja_meli')
-                                        const hasBajaTN = kinds.includes('shock_baja_tn')
-                                        const hasAlzaMeli = kinds.includes('shock_alza_meli')
-                                        const hasAlzaTN = kinds.includes('shock_alza_tn')
 
                                         return (
                                             <tr key={`${realIndex}-${prod.sku}`} className={`transition-colors ${hasProblems ? 'bg-red-500/4 hover:bg-red-500/6' : 'hover:bg-secondary/15'}`}>
@@ -935,84 +1037,68 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                                                 </td>
                                                 <td className="p-3"><PlatformBadges plataformas={prod.plataformas} /></td>
 
-                                                {/* SKU Proveedor — read-only */}
+                                                {/* SKU Proveedor */}
                                                 <td className="p-3">
                                                     <span className="font-mono font-bold text-xs text-muted-foreground/70">{prod.sku_proveedor ?? prod.sku}</span>
+                                                    {/* SKU overrides inline */}
+                                                    <div className="flex gap-1 mt-1">
+                                                        <input type="text" value={prod.sku_meli ?? ''} onChange={(e) => updateField(realIndex, 'sku_meli', e.target.value || null)}
+                                                            placeholder="ML" title="SKU MeLi"
+                                                            className="w-[60px] font-mono text-[10px] border border-border/30 rounded bg-transparent px-1 py-0.5 outline-none focus:border-amber-500/50 placeholder:text-amber-500/25 text-amber-400/80" />
+                                                        <input type="text" value={prod.sku_tn ?? ''} onChange={(e) => updateField(realIndex, 'sku_tn', e.target.value || null)}
+                                                            placeholder="TN" title="SKU TN"
+                                                            className="w-[60px] font-mono text-[10px] border border-border/30 rounded bg-transparent px-1 py-0.5 outline-none focus:border-blue-500/50 placeholder:text-blue-500/25 text-blue-400/80" />
+                                                    </div>
                                                 </td>
 
-                                                {/* SKU TN — editable */}
-                                                <td className="p-3">
-                                                    <input
-                                                        type="text"
-                                                        value={prod.sku_tn ?? ''}
-                                                        onChange={(e) => updateField(realIndex, 'sku_tn', e.target.value || null)}
-                                                        placeholder="—"
-                                                        className="w-[90px] font-mono text-xs border border-border/40 rounded-md bg-transparent px-1.5 py-1 outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 placeholder:text-muted-foreground/25"
-                                                    />
-                                                </td>
-
-                                                {/* SKU ML — editable */}
-                                                <td className="p-3">
-                                                    <input
-                                                        type="text"
-                                                        value={prod.sku_meli ?? ''}
-                                                        onChange={(e) => updateField(realIndex, 'sku_meli', e.target.value || null)}
-                                                        placeholder="—"
-                                                        className="w-[90px] font-mono text-xs border border-border/40 rounded-md bg-transparent px-1.5 py-1 outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 placeholder:text-muted-foreground/25"
-                                                    />
-                                                </td>
-
-                                                {/* Descripción + price shock */}
-                                                <td className="p-3">
-                                                    <span className="text-xs text-muted-foreground/80 max-w-[180px] truncate block">{prod.descripcion}</span>
-                                                    {(hasBajaMeli || hasAlzaMeli) && liveMeli && (
-                                                        <div className="mt-1.5 flex items-center gap-1">
-                                                            <div className="w-3 h-3 rounded-sm overflow-hidden bg-white flex-shrink-0">
-                                                                <Image src="/logos/meli.png" alt="ML" width={10} height={10} className="object-contain" />
-                                                            </div>
-                                                            <PriceShockBadge kind={hasBajaMeli ? 'baja' : 'alza'} actualPrice={liveMeli} newPrice={prod.precio_final ?? 0} platform="meli" />
-                                                        </div>
+                                                {/* Descripción */}
+                                                <td className="p-3 max-w-[160px]">
+                                                    <span className="text-xs text-muted-foreground/80 truncate block">{prod.descripcion}</span>
+                                                    {kinds.includes('bajo_costo') && (
+                                                        <span className="text-[9px] font-black px-1.5 py-0.5 rounded border text-red-500 bg-red-500/10 border-red-500/20 mt-1 inline-block">↓ BAJO COSTO</span>
                                                     )}
-                                                    {(hasBajaTN || hasAlzaTN) && liveTN && (
-                                                        <div className="mt-1 flex items-center gap-1">
-                                                            <div className="w-3 h-3 rounded-sm overflow-hidden bg-white flex-shrink-0">
-                                                                <Image src="/logos/tiendanube.png" alt="TN" width={10} height={10} className="object-contain" />
-                                                            </div>
-                                                            <PriceShockBadge kind={hasBajaTN ? 'baja' : 'alza'} actualPrice={liveTN} newPrice={prod.precio_final ?? 0} platform="tn" />
-                                                        </div>
+                                                    {kinds.includes('alto_costo') && (
+                                                        <span className="text-[9px] font-black px-1.5 py-0.5 rounded border text-orange-500 bg-orange-500/10 border-orange-500/20 mt-1 inline-block">↑ ALTO COSTO</span>
                                                     )}
                                                 </td>
 
+                                                {/* Costo */}
                                                 <td className="p-3 text-right align-top">
                                                     <span className="text-xs font-mono text-muted-foreground">${formatARS(prod.precio_original ?? 0)}</span>
                                                 </td>
 
+                                                {/* Precio Venta — editable */}
                                                 <td className="p-3 text-right align-top">
-                                                    {liveRef != null ? (
-                                                        <span className="text-xs font-mono font-semibold text-blue-400">${formatARS(liveRef)}</span>
-                                                    ) : (
-                                                        <span className="text-[10px] text-muted-foreground/30 italic">—</span>
-                                                    )}
+                                                    <input type="number" value={prod.precio_final ?? ''}
+                                                        onChange={(e) => updateField(realIndex, 'precio_final', parseFloat(e.target.value))}
+                                                        className="w-[100px] text-right font-black rounded-lg border border-border/50 bg-transparent py-1 px-2 text-sm outline-none focus:ring-1 focus:ring-primary/20 focus:border-primary/40 tabular-nums" />
                                                 </td>
 
-                                                {/* Precio nuevo — editable por index */}
+                                                {/* Precio MeLi — actual + editable */}
+                                                <td className="p-3 text-right align-top">
+                                                    <div className="flex flex-col items-end gap-0.5">
+                                                        {prod.precio_actual_meli != null && (
+                                                            <span className="text-[10px] text-amber-400/50 font-mono tabular-nums">
+                                                                ${formatARS(prod.precio_actual_meli)}
+                                                            </span>
+                                                        )}
+                                                        <input type="number" value={prod.precio_meli ?? ''}
+                                                            onChange={(e) => updateField(realIndex, 'precio_meli', parseFloat(e.target.value))}
+                                                            className="w-[100px] text-right font-bold rounded-lg border border-amber-500/30 bg-transparent py-1 px-2 text-sm outline-none focus:ring-1 focus:ring-amber-500/20 focus:border-amber-500/50 tabular-nums text-amber-300" />
+                                                    </div>
+                                                </td>
+
+                                                {/* Precio TN — actual + editable */}
                                                 <td className="p-3 pr-4 text-right align-top">
-                                                    <div className="flex flex-col items-end gap-1.5">
-                                                        {kinds.includes('bajo_costo') && (
-                                                            <span className="text-[9px] font-black px-1.5 py-0.5 rounded border text-red-500 bg-red-500/10 border-red-500/20">↓ BAJO COSTO</span>
+                                                    <div className="flex flex-col items-end gap-0.5">
+                                                        {prod.precio_actual_tn != null && (
+                                                            <span className="text-[10px] text-blue-400/50 font-mono tabular-nums">
+                                                                ${formatARS(prod.precio_actual_tn)}
+                                                            </span>
                                                         )}
-                                                        {kinds.includes('alto_costo') && (
-                                                            <span className="text-[9px] font-black px-1.5 py-0.5 rounded border text-orange-500 bg-orange-500/10 border-orange-500/20">↑ ALTO COSTO</span>
-                                                        )}
-                                                        <input
-                                                            type="number"
-                                                            value={prod.precio_final ?? ''}
-                                                            onChange={(e) => updateField(realIndex, 'precio_final', parseFloat(e.target.value))}
-                                                            className={`w-[110px] text-right font-black rounded-lg border bg-transparent py-1.5 px-2.5 text-sm outline-none transition-all focus:ring-1 ${hasProblems
-                                                                ? 'border-red-500/50 text-red-400 focus:ring-red-500/20 focus:border-red-500/70 shadow-sm shadow-red-500/10'
-                                                                : 'border-border/50 focus:ring-primary/20 focus:border-primary/40'
-                                                                }`}
-                                                        />
+                                                        <input type="number" value={prod.precio_tn ?? ''}
+                                                            onChange={(e) => updateField(realIndex, 'precio_tn', parseFloat(e.target.value))}
+                                                            className="w-[100px] text-right font-bold rounded-lg border border-blue-500/30 bg-transparent py-1 px-2 text-sm outline-none focus:ring-1 focus:ring-blue-500/20 focus:border-blue-500/50 tabular-nums text-blue-300" />
                                                     </div>
                                                 </td>
                                             </tr>
