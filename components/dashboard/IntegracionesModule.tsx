@@ -22,10 +22,11 @@ interface Diccionario {
 
 interface Props {
     integraciones: any
+    setIntegraciones: (fn: (prev: any) => any) => void
     setActiveModule: (m: string) => void
 }
 
-export default function IntegracionesModule({ integraciones, setActiveModule }: Props) {
+export default function IntegracionesModule({ integraciones, setIntegraciones, setActiveModule }: Props) {
     const [diccionarios, setDiccionarios] = useState<Diccionario[]>([])
     const [loadingDics, setLoadingDics] = useState(true)
     const [uploading, setUploading] = useState(false)

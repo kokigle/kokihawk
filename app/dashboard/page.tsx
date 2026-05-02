@@ -373,7 +373,7 @@ export default function DashboardPage() {
                     <motion.div key="integraciones"
                         initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
                         transition={{ duration: 0.18 }}>
-                        <IntegracionesModule integraciones={integraciones} setActiveModule={setActiveModule} />
+                        <IntegracionesModule integraciones={integraciones} setIntegraciones={setIntegraciones} setActiveModule={setActiveModule} />
                     </motion.div>
                 )}
                 {activeModule === 'historial' && user && (

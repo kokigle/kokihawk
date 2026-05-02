@@ -197,22 +197,53 @@ function ExpandedDetail({ record }: { record: HistorialRecord }) {
 function RollbackButton({ record }: { record: HistorialRecord }) {
     const [loading, setLoading] = useState(false)
     const [done, setDone] = useState(false)
+    const supabase = useMemo(() => createClient(), [])
 
     const handleRollback = async () => {
         if (!confirm(`¿Deshacer la sync de "${record.nombre_archivo}"? Se revertirán ${record.actualizados} precios al valor anterior.`)) return
         setLoading(true)
         try {
+            // Get JWT for auth
+            const { data: { session } } = await supabase.auth.getSession()
+            const jwt = session?.access_token
+            if (!jwt) { toast.error('Sesión expirada. Recargá la página.'); return }
+
+            // Get integration tokens needed by the backend
+            const { data: ints } = await supabase
+                .from('integraciones_api')
+                .select('*')
+                .eq('user_id', record.user_id)
+                .single()
+
+            // Build payload matching backend expectation:
+            // { snapshot_url, plataforma, token, refresh_token?, store_id? }
+            const payload: Record<string, string> = {
+                snapshot_url: record.snapshot_url!,
+                plataforma: record.plataforma,
+                token: record.plataforma === 'meli'
+                    ? (ints?.meli_access_token ?? '')
+                    : (ints?.tiendanube_access_token ?? ''),
+            }
+            if (record.plataforma === 'meli') {
+                payload.refresh_token = ints?.meli_refresh_token ?? ''
+            } else {
+                payload.store_id = ints?.tiendanube_store_id ?? ''
+            }
+
             const res = await fetch('https://api.kokihawk.com.ar/deshacer-sync', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ historial_id: record.id, user_id: record.user_id }),
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${jwt}`,
+                },
+                body: JSON.stringify(payload),
             })
             const data = await res.json()
-            if (res.ok && data.status === 'ok') {
-                toast.success(`✓ Rollback completo — ${data.revertidos ?? record.actualizados} precios revertidos`)
+            if (res.ok && data.status === 'queued') {
+                toast.success(`✓ Rollback encolado — se revertirán ${record.actualizados} precios`)
                 setDone(true)
             } else {
-                toast.error('Error al deshacer: ' + (data.mensaje ?? 'Intentalo de nuevo'))
+                toast.error('Error al deshacer: ' + (data.error ?? data.mensaje ?? 'Intentalo de nuevo'))
             }
         } catch {
             toast.error('Error de red al deshacer la sincronización')

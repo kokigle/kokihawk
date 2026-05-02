@@ -380,7 +380,7 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                 )
                 if (error) throw error
             }
-            toast.error(`¡Catálogo actualizado! Se guardaron ${dataToSave.length} productos únicos.`)
+            toast.success(`¡Catálogo actualizado! Se guardaron ${dataToSave.length} productos únicos.`)
         } catch (err: any) { toast.error('Error al guardar en el catálogo: ' + err.message) }
         finally { setLoading(false) }
     }
