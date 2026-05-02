@@ -1,12 +1,17 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ArrowLeft, AlertTriangle, Upload, BookType, Trash2, Loader2, CheckCircle2, Plus } from 'lucide-react'
 import { IntegrationCard } from './SharedUI'
 import Image from 'next/image'
+import { toast } from 'sonner'
+import {
+    Dialog, DialogContent, DialogHeader, DialogTitle,
+    DialogDescription, DialogFooter
+} from '@/components/ui/dialog'
 
 interface Diccionario {
     id: string
@@ -28,8 +33,9 @@ export default function IntegracionesModule({ integraciones, setActiveModule }: 
     const [pendingFile, setPendingFile] = useState<File | null>(null)
     const [pendingNombre, setPendingNombre] = useState('')
     const [userId, setUserId] = useState<string | null>(null)
+    const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
     const fileInputRef = useRef<HTMLInputElement>(null)
-    const supabase = createClient()
+    const supabase = useMemo(() => createClient(), [])
 
     useEffect(() => {
         const load = async () => {
@@ -81,17 +87,21 @@ export default function IntegracionesModule({ integraciones, setActiveModule }: 
             setPendingNombre('')
             if (fileInputRef.current) fileInputRef.current.value = ''
         } catch (err: any) {
-            alert('Error al guardar el diccionario: ' + err.message)
+            toast.error('Error al guardar el diccionario: ' + err.message)
         } finally {
             setUploading(false)
         }
     }
 
     const handleDelete = async (id: string) => {
-        if (!confirm('¿Borrar este diccionario? La acción no se puede deshacer.')) return
         const { error } = await supabase.from('diccionarios').delete().eq('id', id)
-        if (!error) setDiccionarios(prev => prev.filter(d => d.id !== id))
-        else alert('Error al borrar.')
+        if (!error) {
+            setDiccionarios(prev => prev.filter(d => d.id !== id))
+            toast.success('Diccionario eliminado')
+        } else {
+            toast.error('Error al borrar.')
+        }
+        setDeleteTarget(null)
     }
 
     return (
@@ -203,7 +213,7 @@ export default function IntegracionesModule({ integraciones, setActiveModule }: 
                                             {dic.contenido?.length ?? 0} equivalencias · {new Date(dic.created_at).toLocaleDateString('es-AR')}
                                         </p>
                                     </div>
-                                    <button onClick={() => handleDelete(dic.id)}
+                                    <button onClick={() => setDeleteTarget(dic.id)}
                                         className="w-7 h-7 flex items-center justify-center rounded-lg text-red-500/40 hover:text-red-500 hover:bg-red-500/8 transition-colors">
                                         <Trash2 className="h-3.5 w-3.5" />
                                     </button>
@@ -214,14 +224,28 @@ export default function IntegracionesModule({ integraciones, setActiveModule }: 
                 </div>
             </div>
 
-            {/* Legal */}
-            <div className="flex items-start gap-3 bg-primary/4 border border-primary/12 rounded-xl p-4">
-                <AlertTriangle className="h-4 w-4 text-primary/60 flex-shrink-0 mt-0.5" />
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                    Al conectar una plataforma, autorizás a KokiHawk a actualizar los precios de tus publicaciones.
-                    Podés desvincular en cualquier momento desde la configuración de tu cuenta en cada plataforma.
-                </p>
-            </div>
+            {/* Confirm delete dialog */}
+            <Dialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}>
+                <DialogContent className="sm:max-w-md bg-card border-border/60">
+                    <DialogHeader>
+                        <DialogTitle className="text-foreground font-black flex items-center gap-2">
+                            <Trash2 className="h-4 w-4 text-red-500" />
+                            Eliminar diccionario
+                        </DialogTitle>
+                        <DialogDescription className="text-muted-foreground">
+                            ¿Borrar este diccionario? La acción no se puede deshacer.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="gap-2 sm:gap-0">
+                        <Button variant="outline" onClick={() => setDeleteTarget(null)}
+                            className="border-border/60 text-muted-foreground font-bold text-xs">Cancelar</Button>
+                        <Button variant="destructive" onClick={() => deleteTarget && handleDelete(deleteTarget)}
+                            className="bg-red-500 hover:bg-red-600 font-bold text-xs gap-1.5">
+                            <Trash2 className="h-3.5 w-3.5" /> Eliminar
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     )
 }

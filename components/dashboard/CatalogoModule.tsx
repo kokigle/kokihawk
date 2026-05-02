@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo, useDeferredValue, useCallback, us
 import { createClient } from '@/utils/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
-import { ArrowLeft, Search, DatabaseZap, Package2, ScanBarcode, X, Camera, Loader2, Zap } from 'lucide-react'
+import { ArrowLeft, Search, DatabaseZap, Package2, ScanBarcode, X, Camera, Loader2, Zap, ChevronLeft, ChevronRight } from 'lucide-react'
 import { PlatformBadges } from './SharedUI'
 import Image from 'next/image'
 
@@ -189,7 +189,7 @@ export default function CatalogoModule({ userId, setActiveModule }: Props) {
     const [showScanner, setShowScanner] = useState(false)
     const [, startTransition] = useTransition()
     const searchInputRef = useRef<HTMLInputElement>(null)
-    const supabase = createClient()
+    const supabase = useMemo(() => createClient(), [])
 
     // useDeferredValue defers the expensive filter computation — keeps typing responsive
     const deferredSearch = useDeferredValue(searchInput)
@@ -237,8 +237,17 @@ export default function CatalogoModule({ userId, setActiveModule }: Props) {
     }, [catalogo, deferredSearch, deferredMeli, deferredTN])
 
     const isFiltering = deferredSearch || deferredMeli || deferredTN
-    // Visual lag indicator when deferred value hasn't caught up yet
     const isPending = searchInput !== deferredSearch || filterMeliCat !== deferredMeli || filterTNCat !== deferredTN
+
+    // ── Paginación del catálogo ──
+    const CAT_PAGE_SIZE = 50
+    const [catPage, setCatPage] = useState(1)
+    useEffect(() => { setCatPage(1) }, [filteredCatalogo])
+    const catTotalPages = Math.max(1, Math.ceil(filteredCatalogo.length / CAT_PAGE_SIZE))
+    const paginatedCatalogo = useMemo(() => {
+        const start = (catPage - 1) * CAT_PAGE_SIZE
+        return filteredCatalogo.slice(start, start + CAT_PAGE_SIZE)
+    }, [filteredCatalogo, catPage])
 
     const handleSearch = useCallback((val: string) => {
         setSearchInput(val)
@@ -375,7 +384,7 @@ export default function CatalogoModule({ userId, setActiveModule }: Props) {
                                     </tr>
                                 ))
                             ) : filteredCatalogo.length > 0 ? (
-                                filteredCatalogo.map((prod, i) => (
+                                paginatedCatalogo.map((prod, i) => (
                                     <tr
                                         key={prod.sku ?? i}
                                         className={`transition-colors group ${isPending ? 'opacity-60' : 'hover:bg-secondary/20'}`}
@@ -438,6 +447,27 @@ export default function CatalogoModule({ userId, setActiveModule }: Props) {
                         </tbody>
                     </table>
                 </div>
+                {/* Paginación */}
+                {catTotalPages > 1 && (
+                    <div className="flex items-center justify-between px-4 py-2.5 border-t border-border/40 bg-secondary/20">
+                        <span className="text-[10px] font-bold text-muted-foreground tabular-nums">
+                            {((catPage - 1) * CAT_PAGE_SIZE + 1)}–{Math.min(catPage * CAT_PAGE_SIZE, filteredCatalogo.length)} de {filteredCatalogo.length}
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                            <button onClick={() => setCatPage(p => Math.max(1, p - 1))} disabled={catPage === 1}
+                                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-border/60 text-[10px] font-bold text-muted-foreground hover:bg-secondary/60 disabled:opacity-30 disabled:cursor-not-allowed transition-all">
+                                <ChevronLeft className="h-3 w-3" /> Anterior
+                            </button>
+                            <span className="text-[10px] font-black text-foreground bg-primary/10 border border-primary/20 px-2.5 py-1.5 rounded-lg tabular-nums">
+                                {catPage} / {catTotalPages}
+                            </span>
+                            <button onClick={() => setCatPage(p => Math.min(catTotalPages, p + 1))} disabled={catPage === catTotalPages}
+                                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-border/60 text-[10px] font-bold text-muted-foreground hover:bg-secondary/60 disabled:opacity-30 disabled:cursor-not-allowed transition-all">
+                                Siguiente <ChevronRight className="h-3 w-3" />
+                            </button>
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     )

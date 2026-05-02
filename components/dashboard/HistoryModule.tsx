@@ -1,16 +1,17 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import { Button } from '@/components/ui/button'
 import {
     ArrowLeft, History, CheckCircle2, XCircle, AlertTriangle,
     FileSpreadsheet, RefreshCw, Loader2, Clock, ChevronDown,
-    ChevronUp, Search, X, Filter
+    ChevronUp, Search, X, Filter, Undo2
 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import Image from 'next/image'
 import { useSyncJobs } from '@/contexts/SyncJobsContext'
+import { toast } from 'sonner'
 
 // ─────────────────────────────────────────────────────────────────
 // TYPES
@@ -27,6 +28,7 @@ interface HistorialRecord {
     estado: 'success' | 'error'
     mensaje: string | null
     created_at: string
+    snapshot_url?: string | null
 }
 
 interface Props {
@@ -180,7 +182,62 @@ function ExpandedDetail({ record }: { record: HistorialRecord }) {
                     </div>
                 </div>
             )}
+
+            {/* Rollback — solo si hay snapshot disponible */}
+            {record.snapshot_url && record.estado === 'success' && (
+                <RollbackButton record={record} />
+            )}
         </div>
+    )
+}
+
+// ─────────────────────────────────────────────────────────────────
+// ROLLBACK BUTTON
+// ─────────────────────────────────────────────────────────────────
+function RollbackButton({ record }: { record: HistorialRecord }) {
+    const [loading, setLoading] = useState(false)
+    const [done, setDone] = useState(false)
+
+    const handleRollback = async () => {
+        if (!confirm(`¿Deshacer la sync de "${record.nombre_archivo}"? Se revertirán ${record.actualizados} precios al valor anterior.`)) return
+        setLoading(true)
+        try {
+            const res = await fetch('https://api.kokihawk.com.ar/deshacer-sync', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ historial_id: record.id, user_id: record.user_id }),
+            })
+            const data = await res.json()
+            if (res.ok && data.status === 'ok') {
+                toast.success(`✓ Rollback completo — ${data.revertidos ?? record.actualizados} precios revertidos`)
+                setDone(true)
+            } else {
+                toast.error('Error al deshacer: ' + (data.mensaje ?? 'Intentalo de nuevo'))
+            }
+        } catch {
+            toast.error('Error de red al deshacer la sincronización')
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    if (done) return (
+        <div className="flex items-center gap-2 text-[11px] font-bold text-emerald-500 mt-1">
+            <CheckCircle2 className="h-3.5 w-3.5" /> Precios revertidos correctamente
+        </div>
+    )
+
+    return (
+        <button
+            onClick={handleRollback}
+            disabled={loading}
+            className="mt-1 flex items-center gap-2 px-3 py-1.5 rounded-xl text-[11px] font-black border border-amber-500/30 bg-amber-500/8 text-amber-400 hover:bg-amber-500/15 hover:border-amber-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+            {loading
+                ? <><Loader2 className="h-3 w-3 animate-spin" /> Deshaciendo...</>
+                : <><Undo2 className="h-3 w-3" /> Deshacer esta sync</>
+            }
+        </button>
     )
 }
 
@@ -295,12 +352,17 @@ export default function HistoryModule({ userId, setActiveModule }: Props) {
     const { jobs } = useSyncJobs()
 
     const API = 'https://api.kokihawk.com.ar'
+    const supabase = useMemo(() => createClient(), [])
 
     const fetchHistorial = useCallback(async (showLoader = true) => {
         if (showLoader) setLoading(true)
         else setRefreshing(true)
         try {
-            const res = await fetch(`${API}/historial/${userId}?limit=100`)
+            const { data: { session } } = await supabase.auth.getSession()
+            const jwt = session?.access_token
+            const res = await fetch(`${API}/historial/${userId}?limit=100`, {
+                headers: jwt ? { 'Authorization': `Bearer ${jwt}` } : {},
+            })
             if (res.ok) {
                 const data = await res.json()
                 setRecords(data)

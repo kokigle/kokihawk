@@ -145,6 +145,12 @@ export default function FloatingWidget({
                 intervalRefs.current.delete(id)
             }
         })
+
+        // Cleanup: matar todos los intervalos al re-ejecutar el efecto
+        return () => {
+            intervalRefs.current.forEach(iv => clearInterval(iv))
+            intervalRefs.current.clear()
+        }
     }, [jobs, updateJob, onTokensRefreshed])
 
     // Limpiar todo al desmontar

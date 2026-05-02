@@ -1,14 +1,16 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
 import { createClient } from '@/utils/supabase/client'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import Image from 'next/image'
 import {
     LogOut, FileSpreadsheet, Store, Package, History,
-    ChevronRight, TrendingUp, RefreshCw, Zap, ArrowRight
+    ChevronRight, TrendingUp, RefreshCw, Zap, ArrowRight, Clock
 } from 'lucide-react'
+import { toast } from 'sonner'
 import { ModuleCard, HistorialMockup } from '@/components/dashboard/SharedUI'
 import MotorModule from '@/components/dashboard/MotorModule'
 import CatalogoModule from '@/components/dashboard/CatalogoModule'
@@ -45,14 +47,27 @@ function QuickAction({ icon, label, sublabel, onClick, accent }: { icon: React.R
     )
 }
 
+function formatRelative(dateStr: string): string {
+    const diff = Date.now() - new Date(dateStr).getTime()
+    const min = Math.floor(diff / 60000)
+    const hrs = Math.floor(diff / 3600000)
+    const days = Math.floor(diff / 86400000)
+    if (min < 1) return 'Hace un momento'
+    if (min < 60) return `Hace ${min} min`
+    if (hrs < 24) return `Hace ${hrs}h`
+    if (days < 7) return `Hace ${days}d`
+    return new Date(dateStr).toLocaleDateString('es-AR', { day: '2-digit', month: 'short' })
+}
+
 export default function DashboardPage() {
     const [user, setUser] = useState<any>(null)
     const [activeModule, setActiveModule] = useState('hub')
     const [step, setStep] = useState(1)
     const [integraciones, setIntegraciones] = useState<any>(null)
+    const [lastSync, setLastSync] = useState<string | null>(null)
 
     const router = useRouter()
-    const supabase = createClient()
+    const supabase = useMemo(() => createClient(), [])
 
     useEffect(() => {
         const init = async () => {
@@ -63,27 +78,61 @@ export default function DashboardPage() {
             const params = new URLSearchParams(window.location.search)
             let needsRefetch = false
 
-            const tnToken = params.get('tn_token')
-            const tnStore = params.get('tn_store')
-            if (tnToken && tnStore) {
-                await supabase.from('integraciones_api').upsert({ user_id: user.id, tiendanube_access_token: tnToken, tiendanube_store_id: tnStore, updated_at: new Date().toISOString() })
-                alert('¡Tienda Nube vinculada con éxito!')
-                needsRefetch = true
+            // OAuth tokens ahora vienen en cookies HttpOnly — consumirlas via API
+            const oauthParam = params.get('oauth')
+            if (oauthParam) {
+                try {
+                    const res = await fetch('https://api.kokihawk.com.ar/consume-oauth-cookies', {
+                        credentials: 'include',  // enviar cookies cross-origin
+                    })
+                    const data = await res.json()
+                    if (data.status === 'ok') {
+                        if (data.meli_token) {
+                            await supabase.from('integraciones_api').upsert({
+                                user_id: user.id,
+                                meli_access_token: data.meli_token,
+                                meli_refresh_token: data.meli_refresh,
+                                updated_at: new Date().toISOString(),
+                            })
+                            toast.success('¡Mercado Libre vinculado con éxito!')
+                            needsRefetch = true
+                        }
+                        if (data.tn_token) {
+                            await supabase.from('integraciones_api').upsert({
+                                user_id: user.id,
+                                tiendanube_access_token: data.tn_token,
+                                tiendanube_store_id: data.tn_store,
+                                updated_at: new Date().toISOString(),
+                            })
+                            toast.success('¡Tienda Nube vinculada con éxito!')
+                            needsRefetch = true
+                        }
+                    }
+                } catch (err) {
+                    console.error('Error consumiendo cookies OAuth:', err)
+                }
             }
-            const meliToken = params.get('meli_token')
-            const meliRefresh = params.get('meli_refresh')
-            if (meliToken) {
-                await supabase.from('integraciones_api').upsert({ user_id: user.id, meli_access_token: meliToken, meli_refresh_token: meliRefresh, updated_at: new Date().toISOString() })
-                alert('¡Mercado Libre vinculado con éxito!')
-                needsRefetch = true
-            }
-            if (needsRefetch) window.history.replaceState(null, '', '/dashboard')
+            if (needsRefetch || oauthParam) window.history.replaceState(null, '', '/dashboard')
 
             const { data: ints } = await supabase.from('integraciones_api').select('*').eq('user_id', user.id).single()
             if (ints) setIntegraciones(ints)
         }
         init()
     }, [router, supabase])
+
+    // Fetch last successful sync date
+    useEffect(() => {
+        if (!user) return
+        supabase
+            .from('historial_sincronizaciones')
+            .select('created_at')
+            .eq('user_id', user.id)
+            .eq('estado', 'success')
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single()
+            .then(({ data }) => { if (data) setLastSync(data.created_at) })
+    }, [user, supabase])
 
     const userName = user?.email?.split('@')[0] ?? 'Usuario'
     const userInitial = userName.charAt(0).toUpperCase()
@@ -179,6 +228,12 @@ export default function DashboardPage() {
                                         {bothConnected && (
                                             <p className="text-[10px] text-emerald-500 font-bold flex items-center gap-1">
                                                 <TrendingUp className="h-3 w-3" /> Listo para sincronizar
+                                            </p>
+                                        )}
+                                        {lastSync && (
+                                            <p className="text-[10px] text-muted-foreground/60 flex items-center gap-1 mt-0.5">
+                                                <Clock className="h-3 w-3" /> Última sync:{' '}
+                                                <span className="font-bold text-muted-foreground">{formatRelative(lastSync)}</span>
                                             </p>
                                         )}
                                     </div>
@@ -299,18 +354,36 @@ export default function DashboardPage() {
                 )}
 
                 {/* ════ MODULE VIEWS ════ */}
+                <AnimatePresence mode="wait">
                 {activeModule === 'motor' && user && (
-                    <MotorModule user={user} integraciones={integraciones} setIntegraciones={setIntegraciones} setActiveModule={setActiveModule} step={step} setStep={setStep} />
+                    <motion.div key="motor"
+                        initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
+                        transition={{ duration: 0.18 }}>
+                        <MotorModule user={user} integraciones={integraciones} setIntegraciones={setIntegraciones} setActiveModule={setActiveModule} step={step} setStep={setStep} />
+                    </motion.div>
                 )}
                 {activeModule === 'catalogo' && user && (
-                    <CatalogoModule userId={user.id} setActiveModule={setActiveModule} />
+                    <motion.div key="catalogo"
+                        initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
+                        transition={{ duration: 0.18 }}>
+                        <CatalogoModule userId={user.id} setActiveModule={setActiveModule} />
+                    </motion.div>
                 )}
                 {activeModule === 'integraciones' && (
-                    <IntegracionesModule integraciones={integraciones} setActiveModule={setActiveModule} />
+                    <motion.div key="integraciones"
+                        initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
+                        transition={{ duration: 0.18 }}>
+                        <IntegracionesModule integraciones={integraciones} setActiveModule={setActiveModule} />
+                    </motion.div>
                 )}
                 {activeModule === 'historial' && user && (
-                    <HistoryModule userId={user.id} setActiveModule={setActiveModule} />
+                    <motion.div key="historial"
+                        initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
+                        transition={{ duration: 0.18 }}>
+                        <HistoryModule userId={user.id} setActiveModule={setActiveModule} />
+                    </motion.div>
                 )}
+                </AnimatePresence>
             </main>
         </div>
     )

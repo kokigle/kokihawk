@@ -2,7 +2,8 @@ import type { Metadata } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import './globals.css'
 import { SyncJobsProvider } from '@/contexts/SyncJobsContext'
-import FloatingWidget from '@/components/dashboard/FloatingWidget' // <-- IMPORTALO ACÁ
+import FloatingWidget from '@/components/dashboard/FloatingWidget'
+import { Toaster } from 'sonner'
 
 const geist = Geist({ subsets: ["latin"], variable: "--font-geist-sans" })
 const geistMono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono" })
@@ -18,7 +19,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="font-sans antialiased bg-background text-foreground">
         <SyncJobsProvider>
           {children}
-          <FloatingWidget /> {/* <-- PONELO ACÁ */}
+          <FloatingWidget />
+          <Toaster position="top-right" richColors closeButton duration={4000} />
         </SyncJobsProvider>
       </body>
     </html>
