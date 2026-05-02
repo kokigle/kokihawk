@@ -15,12 +15,13 @@ import {
 } from 'lucide-react'
 import Image from 'next/image'
 import { StepIndicator, MappingButton, PlatformBadges } from './SharedUI'
+import { useSyncJobs } from '@/contexts/SyncJobsContext'
+import FloatingWidget from './FloatingWidget'
 
 // ─────────────────────────────────────────────────────────────────
 // CONSTANTES
 // ─────────────────────────────────────────────────────────────────
 const PAGE_SIZE = 30
-const CHUNK_SIZE = 200
 
 // ─────────────────────────────────────────────────────────────────
 // TIPOS
@@ -32,6 +33,12 @@ type AnomalyKind =
     | 'shock_alza_meli'
     | 'shock_baja_tn'
     | 'shock_alza_tn'
+
+interface DiccionarioOption {
+    id: string
+    nombre_proveedor: string
+    contenido: any[]
+}
 
 // ─────────────────────────────────────────────────────────────────
 // ESCUDO TÉCNICO — detección de anomalías
@@ -214,6 +221,7 @@ interface Props {
 // MOTOR MODULE
 // ─────────────────────────────────────────────────────────────────
 export default function MotorModule({ user, integraciones, setIntegraciones, setActiveModule, step, setStep }: Props) {
+    const { addJob } = useSyncJobs()
     const [file, setFile] = useState<File | null>(null)
     const [loading, setLoading] = useState(false)
     const [aumento, setAumento] = useState('45')
@@ -225,15 +233,12 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
     const [filterTN, setFilterTN] = useState(false)
     const [searchQuery, setSearchQuery] = useState('')
     const [plantillas, setPlantillas] = useState<any[]>([])
+    const [diccionarios, setDiccionarios] = useState<DiccionarioOption[]>([])
+    const [diccionarioSelId, setDiccionarioSelId] = useState<string>('')
     const [legalConfirmed, setLegalConfirmed] = useState(false)
 
     // ── Paginación del Paso 3 ──
     const [currentPage, setCurrentPage] = useState(1)
-
-    // ── Progreso de sincronización ──
-    const [syncProgress, setSyncProgress] = useState({
-        isOpen: false, platform: '', current: 0, total: 0, updated: 0, notFound: 0, errors: 0,
-    })
 
     const deferredFilterMeli = useDeferredValue(filterMeli)
     const deferredFilterTN = useDeferredValue(filterTN)
@@ -254,6 +259,13 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
             supabase.from('plantillas_mapeo').select('*').eq('user_id', user.id).then(({ data }) => {
                 if (data) setPlantillas(data)
             })
+            // Cargar diccionarios del usuario
+            supabase
+                .from('diccionarios')
+                .select('id, nombre_proveedor, contenido')
+                .eq('user_id', user.id)
+                .order('created_at', { ascending: false })
+                .then(({ data }) => { if (data) setDiccionarios(data) })
         }
     }, [user]) // eslint-disable-line
 
@@ -303,6 +315,7 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
         formData.append('col_desc', mapping.desc.toString())
         formData.append('col_precio', mapping.precio.toString())
         formData.append('fila_inicio', mapping.startRow.toString())
+
         if (integraciones?.meli_access_token) {
             formData.append('meli_token', integraciones.meli_access_token)
             formData.append('meli_refresh', integraciones.meli_refresh_token)
@@ -310,29 +323,13 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
         if (integraciones?.tiendanube_access_token) formData.append('tn_token', integraciones.tiendanube_access_token)
         if (integraciones?.tiendanube_store_id) formData.append('tn_store', integraciones.tiendanube_store_id)
 
-        // ── Paginación del Diccionario ────────────────────────────────────────
-        let allDicData: any[] = []
-        let fetchMore = true
-        let from = 0, to = 999
-
-        while (fetchMore) {
-            const { data: chunk, error } = await supabase
-                .from('diccionario_skus')
-                .select('sku_proveedor, sku_ecommerce')
-                .eq('user_id', user.id)
-                .range(from, to)
-
-            if (error) { console.error('Error fetching dictionary:', error); break }
-            if (chunk && chunk.length > 0) {
-                allDicData = [...allDicData, ...chunk]
-                from += 1000; to += 1000
-                if (chunk.length < 1000) fetchMore = false
-            } else {
-                fetchMore = false
+        // ── Diccionario seleccionado ──────────────────────
+        if (diccionarioSelId) {
+            const dic = diccionarios.find(d => d.id === diccionarioSelId)
+            if (dic?.contenido) {
+                formData.append('diccionario', JSON.stringify(dic.contenido))
             }
         }
-
-        if (allDicData.length > 0) formData.append('diccionario', JSON.stringify(allDicData))
 
         try {
             const res = await fetch('https://api.kokihawk.com.ar/procesar-lista', { method: 'POST', body: formData })
@@ -350,7 +347,6 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                         meli_refresh_token: data.nuevos_tokens_meli.refresh_token,
                     }))
                 }
-                // Los objetos del array ya incluyen meli_item_id, tn_product_id, tn_variant_id
                 setResults(data.productos)
                 setStep(3)
             } else throw new Error(data.mensaje)
@@ -394,167 +390,59 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
         } catch { alert('Error al descargar') } finally { setLoading(false) }
     }
 
-    // ── Sync TiendaNube: envía objetos completos (con tn_product_id / tn_variant_id) ──
+    // ── Sync TiendaNube (Job Queue) ───────────────────────────────────────────────
     const handleSyncTiendaNube = async () => {
         if (!integraciones?.tiendanube_access_token) {
             window.location.href = 'https://www.tiendanube.com/apps/30786/authorize'; return
         }
-        if (!confirm(`¿Subir ${results.length} precios a Tienda Nube?`)) return
-
-        setSyncProgress({ isOpen: true, platform: 'Tienda Nube', current: 0, total: results.length, updated: 0, notFound: 0, errors: 0 })
-        let stats = { actualizados: 0, no_encontrados: 0, errores: 0 }
+        if (!confirm(`¿Actualizar ${results.length} precios en Tienda Nube?`)) return
 
         try {
-            for (let i = 0; i < results.length; i += CHUNK_SIZE) {
-                const chunk = results.slice(i, i + CHUNK_SIZE)
-
-                let res: Response
-                try {
-                    res = await fetch('https://api.kokihawk.com.ar/sincronizar-tiendanube', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            access_token: integraciones.tiendanube_access_token,
-                            store_id: integraciones.tiendanube_store_id,
-                            productos: chunk,
-                        }),
-                    })
-                } catch (fetchErr) {
-                    console.error(`[TN] Error de red en lote ${i / CHUNK_SIZE + 1}:`, fetchErr)
-                    stats.errores += chunk.length
-                    setSyncProgress(prev => ({ ...prev, current: Math.min(i + CHUNK_SIZE, results.length), errors: stats.errores }))
-                    continue
-                }
-
-                if (!res.ok) {
-                    const errText = await res.text().catch(() => res.statusText)
-                    console.error(`[TN] HTTP ${res.status} en lote ${i / CHUNK_SIZE + 1}:`, errText)
-                    stats.errores += chunk.length
-                    setSyncProgress(prev => ({ ...prev, current: Math.min(i + CHUNK_SIZE, results.length), errors: stats.errores }))
-                    continue
-                }
-
-                let data: any
-                try {
-                    data = await res.json()
-                } catch (jsonErr) {
-                    console.error(`[TN] JSON inválido en lote ${i / CHUNK_SIZE + 1}:`, jsonErr)
-                    stats.errores += chunk.length
-                    setSyncProgress(prev => ({ ...prev, current: Math.min(i + CHUNK_SIZE, results.length), errors: stats.errores }))
-                    continue
-                }
-
-                if (data.status === 'success') {
-                    stats.actualizados += data.stats.actualizados
-                    stats.no_encontrados += data.stats.no_encontrados
-                    stats.errores += data.stats.errores
-                } else {
-                    console.error('[TN] Error de API en lote:', data.mensaje)
-                    stats.errores += chunk.length
-                }
-
-                setSyncProgress(prev => ({
-                    ...prev,
-                    current: Math.min(i + CHUNK_SIZE, results.length),
-                    updated: stats.actualizados,
-                    notFound: stats.no_encontrados,
-                    errors: stats.errores,
-                }))
+            const res = await fetch('https://api.kokihawk.com.ar/sincronizar-tiendanube', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    access_token: integraciones.tiendanube_access_token,
+                    store_id: integraciones.tiendanube_store_id,
+                    productos: results,
+                }),
+            })
+            const data = await res.json()
+            if (data.job_id) {
+                addJob({ job_id: data.job_id, plataforma: 'tn' })
+            } else {
+                alert('Error al encolar: ' + (data.mensaje ?? 'desconocido'))
             }
-            alert(`☁️ TN COMPLETADO:\n✅ Actualizados: ${stats.actualizados}\n❌ No encontrados: ${stats.no_encontrados}\n⚠️ Errores: ${stats.errores}`)
         } catch (err) {
-            console.error('[TN] Error inesperado en sincronización:', err)
-            alert(`Error inesperado al sincronizar con Tienda Nube.\nRevisá la consola para más detalles.`)
-        } finally {
-            setSyncProgress(prev => ({ ...prev, isOpen: false }))
+            alert('Error de red al sincronizar TN')
         }
     }
 
-    // ── Sync MeLi: envía objetos completos (con meli_item_id) ──
+    // ── Sync MeLi (Job Queue) ─────────────────────────────────────────────────────
     const handleSyncMeLi = async () => {
         if (!integraciones?.meli_access_token) {
             window.location.href = `https://auth.mercadolibre.com.ar/authorization?response_type=code&client_id=3703622904525600&redirect_uri=https://api.kokihawk.com.ar/meli/callback`; return
         }
         if (!confirm(`¿Actualizar ${results.length} precios en Mercado Libre?`)) return
 
-        setSyncProgress({ isOpen: true, platform: 'Mercado Libre', current: 0, total: results.length, updated: 0, notFound: 0, errors: 0 })
-        let stats = { actualizados: 0, no_encontrados: 0, errores: 0 }
-        let currentToken = integraciones.meli_access_token
-        let currentRefresh = integraciones.meli_refresh_token
-
         try {
-            for (let i = 0; i < results.length; i += CHUNK_SIZE) {
-                const chunk = results.slice(i, i + CHUNK_SIZE)
-
-                let res: Response
-                try {
-                    res = await fetch('https://api.kokihawk.com.ar/sincronizar-meli', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            access_token: currentToken,
-                            refresh_token: currentRefresh,
-                            productos: chunk,
-                        }),
-                    })
-                } catch (fetchErr) {
-                    console.error(`[MeLi] Error de red en lote ${i / CHUNK_SIZE + 1}:`, fetchErr)
-                    stats.errores += chunk.length
-                    setSyncProgress(prev => ({ ...prev, current: Math.min(i + CHUNK_SIZE, results.length), errors: stats.errores }))
-                    continue
-                }
-
-                let data: any
-                try {
-                    data = await res.json()
-                } catch (jsonErr) {
-                    console.error(`[MeLi] JSON inválido en lote ${i / CHUNK_SIZE + 1} (HTTP ${res.status}):`, jsonErr)
-                    stats.errores += chunk.length
-                    setSyncProgress(prev => ({ ...prev, current: Math.min(i + CHUNK_SIZE, results.length), errors: stats.errores }))
-                    continue
-                }
-
-                if (res.status === 401) {
-                    console.error('[MeLi] Token expirado:', data.mensaje)
-                    alert(data.mensaje)
-                    setIntegraciones((prev: any) => ({ ...prev, meli_access_token: null }))
-                    break
-                }
-
-                if (data.status === 'success') {
-                    stats.actualizados += data.stats.actualizados
-                    stats.no_encontrados += data.stats.no_encontrados
-                    stats.errores += data.stats.errores
-
-                    if (data.nuevos_tokens) {
-                        currentToken = data.nuevos_tokens.access_token
-                        currentRefresh = data.nuevos_tokens.refresh_token
-                        await supabase.from('integraciones_api').update({
-                            meli_access_token: currentToken,
-                            meli_refresh_token: currentRefresh,
-                            updated_at: new Date().toISOString(),
-                        }).eq('user_id', user.id)
-                        setIntegraciones((prev: any) => ({ ...prev, meli_access_token: currentToken, meli_refresh_token: currentRefresh }))
-                    }
-                } else {
-                    console.error(`[MeLi] Error de API en lote ${i / CHUNK_SIZE + 1}:`, data.mensaje)
-                    stats.errores += chunk.length
-                }
-
-                setSyncProgress(prev => ({
-                    ...prev,
-                    current: Math.min(i + CHUNK_SIZE, results.length),
-                    updated: stats.actualizados,
-                    notFound: stats.no_encontrados,
-                    errors: stats.errores,
-                }))
+            const res = await fetch('https://api.kokihawk.com.ar/sincronizar-meli', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    access_token: integraciones.meli_access_token,
+                    refresh_token: integraciones.meli_refresh_token,
+                    productos: results,
+                }),
+            })
+            const data = await res.json()
+            if (data.job_id) {
+                addJob({ job_id: data.job_id, plataforma: 'meli' })
+            } else {
+                alert('Error al encolar: ' + (data.mensaje ?? 'desconocido'))
             }
-            alert(`📦 M.LIBRE COMPLETADO:\n\n✅ Actualizados: ${stats.actualizados}\n❌ No encontrados: ${stats.no_encontrados}\n⚠️ Errores: ${stats.errores}`)
         } catch (err) {
-            console.error('[MeLi] Error inesperado en sincronización:', err)
-            alert(`Error inesperado al sincronizar con Mercado Libre.\nRevisá la consola para más detalles.`)
-        } finally {
-            setSyncProgress(prev => ({ ...prev, isOpen: false }))
+            alert('Error de red al sincronizar MeLi')
         }
     }
 
@@ -565,11 +453,10 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
     // ── Lista filtrada, buscada y ordenada (todos los items, no paginada aún) ──
     const processedResults = useMemo(() => {
         let filtered = [...results]
-        // Filtro por plataforma
         if (deferredFilterMeli && !deferredFilterTN) filtered = filtered.filter(p => p.plataformas?.includes('meli'))
         else if (deferredFilterTN && !deferredFilterMeli) filtered = filtered.filter(p => p.plataformas?.includes('tn'))
         else if (deferredFilterMeli && deferredFilterTN) filtered = filtered.filter(p => p.plataformas?.includes('meli') || p.plataformas?.includes('tn'))
-        // Filtro por búsqueda (SKU o descripción)
+
         if (deferredSearchQuery.trim()) {
             const q = deferredSearchQuery.trim().toLowerCase()
             filtered = filtered.filter(p =>
@@ -583,7 +470,7 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
         })
     }, [results, deferredFilterMeli, deferredFilterTN, deferredSearchQuery])
 
-    // ── Slice paginado para el DOM — máximo PAGE_SIZE nodos en tabla ──
+    // ── Slice paginado para el DOM ──
     const totalPages = Math.max(1, Math.ceil(processedResults.length / PAGE_SIZE))
     const paginatedResults = useMemo(() => {
         const start = (currentPage - 1) * PAGE_SIZE
@@ -663,6 +550,24 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                                         </select>
                                     </div>
                                 )}
+
+                                {/* Dropdown diccionario — Step 2 */}
+                                {diccionarios.length > 0 && (
+                                    <div className="space-y-1">
+                                        <Label className="text-[9px] font-black uppercase tracking-widest text-violet-400">Diccionario SKUs</Label>
+                                        <select
+                                            value={diccionarioSelId}
+                                            onChange={e => setDiccionarioSelId(e.target.value)}
+                                            className="h-9 text-sm font-semibold border border-border/60 rounded-lg px-3 outline-none bg-secondary/40 text-foreground focus:border-violet-500/50"
+                                        >
+                                            <option value="">Sin diccionario</option>
+                                            {diccionarios.map(d => (
+                                                <option key={d.id} value={d.id}>{d.nombre_proveedor}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
+
                                 <div className="space-y-1">
                                     <Label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Aumento %</Label>
                                     <Input type="number" value={aumento} onChange={(e) => setAumento(e.target.value)}
@@ -895,7 +800,7 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                         </span>
                     </div>
 
-                    {/* Results table — solo PAGE_SIZE nodos en el DOM */}
+                    {/* Results table */}
                     <div className="bg-card border border-border/60 rounded-2xl overflow-hidden shadow-sm">
                         <div className={`overflow-x-auto transition-opacity ${isFilterPending ? 'opacity-60' : 'opacity-100'}`}>
                             <table className="w-full text-sm border-collapse min-w-[680px]">
@@ -1010,58 +915,23 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                 </div>
             )}
 
-            {/* ── MODAL DE PROGRESO ── */}
-            {syncProgress.isOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4">
-                    <div className="bg-card border border-border/60 p-6 rounded-3xl shadow-2xl w-full max-w-md space-y-6">
-                        <div className="text-center space-y-1.5">
-                            <h3 className="text-xl font-black text-foreground tracking-tight">
-                                Sincronizando {syncProgress.platform}
-                            </h3>
-                            <p className="text-xs font-bold text-muted-foreground">
-                                Procesando lote {Math.ceil(syncProgress.current / CHUNK_SIZE)} de {Math.ceil(syncProgress.total / CHUNK_SIZE)}
-                            </p>
-                        </div>
-
-                        <div className="space-y-2">
-                            <div className="w-full bg-secondary/50 rounded-full h-4 overflow-hidden border border-border/40 p-0.5">
-                                <div
-                                    className="bg-primary h-full rounded-full transition-all duration-500 ease-out flex items-center justify-end pr-2"
-                                    style={{ width: `${Math.max(5, Math.round((syncProgress.current / syncProgress.total) * 100))}%` }}
-                                >
-                                    <span className="text-[9px] font-black text-primary-foreground/80 mix-blend-overlay">
-                                        {Math.round((syncProgress.current / syncProgress.total) * 100)}%
-                                    </span>
-                                </div>
-                            </div>
-                            <div className="flex justify-between text-xs font-bold text-muted-foreground">
-                                <span>{syncProgress.current} listos</span>
-                                <span>{syncProgress.total} total</span>
-                            </div>
-                        </div>
-
-                        <div className="grid grid-cols-3 gap-2 text-center pt-2 border-t border-border/40">
-                            <div className="bg-emerald-500/10 rounded-xl py-2 border border-emerald-500/20">
-                                <span className="block text-emerald-500 font-black text-lg">{syncProgress.updated}</span>
-                                <span className="text-[9px] font-bold text-emerald-500/80 uppercase">OK</span>
-                            </div>
-                            <div className="bg-amber-500/10 rounded-xl py-2 border border-amber-500/20">
-                                <span className="block text-amber-500 font-black text-lg">{syncProgress.notFound}</span>
-                                <span className="text-[9px] font-bold text-amber-500/80 uppercase">Sin Match</span>
-                            </div>
-                            <div className="bg-red-500/10 rounded-xl py-2 border border-red-500/20">
-                                <span className="block text-red-500 font-black text-lg">{syncProgress.errors}</span>
-                                <span className="text-[9px] font-bold text-red-500/80 uppercase">Error</span>
-                            </div>
-                        </div>
-
-                        <div className="flex items-center justify-center gap-2 mt-4 text-[11px] text-muted-foreground/60 font-semibold bg-secondary/30 py-2 rounded-lg">
-                            <Loader2 className="animate-spin h-3.5 w-3.5" />
-                            Por favor, no cierres esta pestaña...
-                        </div>
-                    </div>
-                </div>
-            )}
+            {/* Widget flotante de progreso — vive fuera del flujo del step */}
+            <FloatingWidget
+                onTokensRefreshed={(plataforma, tokens) => {
+                    if (plataforma === 'meli') {
+                        supabase.from('integraciones_api').update({
+                            meli_access_token: tokens.access_token,
+                            meli_refresh_token: tokens.refresh_token,
+                            updated_at: new Date().toISOString(),
+                        }).eq('user_id', user.id)
+                        setIntegraciones((prev: any) => ({
+                            ...prev,
+                            meli_access_token: tokens.access_token,
+                            meli_refresh_token: tokens.refresh_token,
+                        }))
+                    }
+                }}
+            />
         </div>
     )
 }
