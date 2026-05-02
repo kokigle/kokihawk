@@ -23,7 +23,7 @@ function ProgressBar({ value, total }: { value: number; total: number }) {
 function JobRow({ job, onRemove }: { job: JobStatus; onRemove: () => void }) {
     const logo = job.plataforma === 'meli' ? '/logos/meli.png' : '/logos/tiendanube.png'
     const name = job.plataforma === 'meli' ? 'Mercado Libre' : 'Tienda Nube'
-    const isDone = job.status === 'success' || job.status === 'error'
+    const isDone = job.status === 'success' || job.status === 'error' || job.status === 'timeout'
     const pct = job.total ? Math.min(100, Math.round(((job.procesados ?? 0) / job.total) * 100)) : 0
 
     return (
@@ -38,7 +38,7 @@ function JobRow({ job, onRemove }: { job: JobStatus; onRemove: () => void }) {
                     <Loader2 className="h-3.5 w-3.5 text-primary animate-spin flex-shrink-0" />
                 ) : job.status === 'success' ? (
                     <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 flex-shrink-0" />
-                ) : job.status === 'error' ? (
+                ) : job.status === 'error' || job.status === 'timeout' ? (
                     <XCircle className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />
                 ) : null}
 
@@ -79,6 +79,10 @@ function JobRow({ job, onRemove }: { job: JobStatus; onRemove: () => void }) {
             {job.status === 'error' && (
                 <p className="text-[10px] text-red-400">{job.mensaje ?? 'Error desconocido'}</p>
             )}
+
+            {job.status === 'timeout' && (
+                <p className="text-[10px] text-red-400">⏱ Sin señal del servidor — marcado como fallido</p>
+            )}
         </div>
     )
 }
@@ -115,6 +119,7 @@ export default function FloatingWidget({
                         errores: data.errores,
                         mensaje: data.mensaje,
                         errores_detalle: data.errores_detalle,
+                        last_heartbeat: data.last_heartbeat,
                     })
 
                     // Si el job terminó, limpiar intervalo

@@ -13,6 +13,7 @@ import { ModuleCard, HistorialMockup } from '@/components/dashboard/SharedUI'
 import MotorModule from '@/components/dashboard/MotorModule'
 import CatalogoModule from '@/components/dashboard/CatalogoModule'
 import IntegracionesModule from '@/components/dashboard/IntegracionesModule'
+import HistoryModule from '@/components/dashboard/HistoryModule'
 
 /* Connection status pill */
 function ConnPill({ logo, name, connected }: { logo: string; name: string; connected: boolean }) {
@@ -91,6 +92,7 @@ export default function DashboardPage() {
         motor: 'Motor de Listas',
         integraciones: 'Integraciones',
         catalogo: 'Catálogo de Mostrador',
+        historial: 'Historial y Logs',
     }
 
     const bothConnected = integraciones?.meli_access_token && integraciones?.tiendanube_access_token
@@ -220,8 +222,7 @@ export default function DashboardPage() {
                                         title="Historial y Logs"
                                         description="Registro completo de sincronizaciones, errores y auditoría de cambios."
                                         accentColor="bg-emerald-500/10"
-                                        locked
-                                        footer={<HistorialMockup />}
+                                        onClick={() => setActiveModule('historial')}
                                     />
                                 </div>
                             </div>
@@ -306,6 +307,9 @@ export default function DashboardPage() {
                 )}
                 {activeModule === 'integraciones' && (
                     <IntegracionesModule integraciones={integraciones} setActiveModule={setActiveModule} />
+                )}
+                {activeModule === 'historial' && user && (
+                    <HistoryModule userId={user.id} setActiveModule={setActiveModule} />
                 )}
             </main>
         </div>

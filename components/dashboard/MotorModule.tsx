@@ -397,6 +397,7 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
         }
         if (!confirm(`¿Actualizar ${results.length} precios en Tienda Nube?`)) return
 
+        const fileName = file?.name || 'manual'
         try {
             const res = await fetch('https://api.kokihawk.com.ar/sincronizar-tiendanube', {
                 method: 'POST',
@@ -405,11 +406,13 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                     access_token: integraciones.tiendanube_access_token,
                     store_id: integraciones.tiendanube_store_id,
                     productos: results,
+                    user_id: user.id,
+                    file_name: fileName,
                 }),
             })
             const data = await res.json()
             if (data.job_id) {
-                addJob({ job_id: data.job_id, plataforma: 'tn' })
+                addJob({ job_id: data.job_id, plataforma: 'tn', file_name: fileName })
             } else {
                 alert('Error al encolar: ' + (data.mensaje ?? 'desconocido'))
             }
@@ -425,6 +428,7 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
         }
         if (!confirm(`¿Actualizar ${results.length} precios en Mercado Libre?`)) return
 
+        const fileName = file?.name || 'manual'
         try {
             const res = await fetch('https://api.kokihawk.com.ar/sincronizar-meli', {
                 method: 'POST',
@@ -433,11 +437,13 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                     access_token: integraciones.meli_access_token,
                     refresh_token: integraciones.meli_refresh_token,
                     productos: results,
+                    user_id: user.id,
+                    file_name: fileName,
                 }),
             })
             const data = await res.json()
             if (data.job_id) {
-                addJob({ job_id: data.job_id, plataforma: 'meli' })
+                addJob({ job_id: data.job_id, plataforma: 'meli', file_name: fileName })
             } else {
                 alert('Error al encolar: ' + (data.mensaje ?? 'desconocido'))
             }
