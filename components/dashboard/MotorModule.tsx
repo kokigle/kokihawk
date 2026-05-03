@@ -11,7 +11,7 @@ import {
     Loader2, Download, ArrowLeft, Save, Upload, CheckCircle2,
     Zap, AlertTriangle, DatabaseZap, Filter, FileSpreadsheet,
     Info, ShieldAlert, ShieldCheck, TrendingDown, TrendingUp, Scale,
-    ChevronLeft, ChevronRight, Search, X
+    ChevronLeft, ChevronRight, Search, X, Undo2
 } from 'lucide-react'
 import Image from 'next/image'
 import { StepIndicator, MappingButton, PlatformBadges } from './SharedUI'
@@ -55,18 +55,20 @@ function getAnomalies(prod: any): AnomalyKind[] {
     const costo = prod.precio_original ?? 0
     const liveMeli = prod.precio_actual_meli
     const liveTN = prod.precio_actual_tn
+    const pMeli = prod.precio_meli ?? nuevo
+    const pTN = prod.precio_tn ?? nuevo
 
     if (costo > 0) {
         if (nuevo < costo) kinds.push('bajo_costo')
         if (nuevo > costo * 2) kinds.push('alto_costo')
     }
     if (liveMeli && liveMeli > 0) {
-        if ((liveMeli - nuevo) / liveMeli > DROP_THRESHOLD) kinds.push('shock_baja_meli')
-        if ((nuevo - liveMeli) / liveMeli > SPIKE_THRESHOLD) kinds.push('shock_alza_meli')
+        if ((liveMeli - pMeli) / liveMeli > DROP_THRESHOLD) kinds.push('shock_baja_meli')
+        if ((pMeli - liveMeli) / liveMeli > SPIKE_THRESHOLD) kinds.push('shock_alza_meli')
     }
     if (liveTN && liveTN > 0) {
-        if ((liveTN - nuevo) / liveTN > DROP_THRESHOLD) kinds.push('shock_baja_tn')
-        if ((nuevo - liveTN) / liveTN > SPIKE_THRESHOLD) kinds.push('shock_alza_tn')
+        if ((liveTN - pTN) / liveTN > DROP_THRESHOLD) kinds.push('shock_baja_tn')
+        if ((pTN - liveTN) / liveTN > SPIKE_THRESHOLD) kinds.push('shock_alza_tn')
     }
     return kinds
 }
@@ -226,6 +228,7 @@ interface Props {
 export default function MotorModule({ user, integraciones, setIntegraciones, setActiveModule, step, setStep }: Props) {
     const { addJob } = useSyncJobs()
     const [file, setFile] = useState<File | null>(null)
+    const [sessionId, setSessionId] = useState<string>('')
     const [loading, setLoading] = useState(false)
     const [aumento, setAumento] = useState('45')
     const [ajusteMeli, setAjusteMeli] = useState('0')
@@ -249,6 +252,11 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
     const [confirmModal, setConfirmModal] = useState<{ title: string; desc: string; action: () => void } | null>(null)
     const [plantillaName, setPlantillaName] = useState('')
     const [showPlantillaInput, setShowPlantillaInput] = useState(false)
+    const [excelSheets, setExcelSheets] = useState<string[]>([])
+    const [selectedSheet, setSelectedSheet] = useState<string>('')
+    const [providerMemory, setProviderMemory] = useState<any>(null)
+    const [smartMapping, setSmartMapping] = useState<any>(null)
+    const [autoDetectSource, setAutoDetectSource] = useState<'memory' | 'smart' | null>(null)
 
     // ── Paginación del Paso 3 ──
     const [currentPage, setCurrentPage] = useState(1)
@@ -324,24 +332,81 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
     }, [plantillas])
 
     const handlePreview = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const selectedFile = e.target.files?.[0]
+        const selectedFile = e?.target?.files?.[0] || file
         if (!selectedFile) return
         setFile(selectedFile); setLoading(true)
         const formData = new FormData(); formData.append('file', selectedFile)
+        if (user?.id) formData.append('user_id', user.id)
+        if (proveedorSel) formData.append('proveedor_nombre', proveedorSel)
         try {
-            const res = await fetch('https://api.kokihawk.com.ar/preview-lista', { method: 'POST', body: formData })
+            const res = await fetch('https://api.kokihawk.com.ar/upload-excel', { method: 'POST', body: formData })
             const data = await res.json()
-            if (data.status === 'success') { setPreviewData(data.filas); setStep(2) }
+            if (data.status === 'success') {
+                setSessionId(data.session_id)
+                setPreviewData(data.filas)
+                if (data.sheets && data.sheets.length > 1) {
+                    setExcelSheets(data.sheets)
+                    setSelectedSheet(data.selected_sheet || data.sheets[0])
+                } else {
+                    setExcelSheets([])
+                    setSelectedSheet('')
+                }
+                setProviderMemory(data.provider_memory || null)
+                setSmartMapping(data.smart_mapping || null)
+                // ── Pre-fill mapping from provider memory or smart mapping ──
+                const pm = data.provider_memory
+                const sm = data.smart_mapping
+                let source: 'memory' | 'smart' | null = null
+                if (pm?.col_sku != null && pm.col_sku !== -1) {
+                    setMapping({
+                        sku: pm.col_sku,
+                        desc: pm.col_desc ?? -1,
+                        precio: pm.col_precio ?? -1,
+                        startRow: pm.fila_inicio ?? 0,
+                    })
+                    source = 'memory'
+                    if (pm.aumento_default) setAumento(pm.aumento_default)
+                    if (pm.redondeo_default) setRedondeo(pm.redondeo_default)
+                    if (pm.ajuste_meli_default) setAjusteMeli(pm.ajuste_meli_default)
+                    if (pm.ajuste_tn_default) setAjusteTN(pm.ajuste_tn_default)
+                } else if (sm?.col_sku != null && sm.col_sku !== -1) {
+                    setMapping({
+                        sku: sm.col_sku,
+                        desc: sm.col_desc ?? -1,
+                        precio: sm.col_precio ?? -1,
+                        startRow: sm.fila_inicio ?? 0,
+                    })
+                    source = 'smart'
+                }
+                setAutoDetectSource(source)
+                setStep(2)
+            }
             else throw new Error(data.mensaje)
         } catch { toast.error('Error al leer el archivo.') } finally { setLoading(false) }
     }
 
+    const handleSheetChange = async (sheetName: string) => {
+        if (!sessionId) return
+        setSelectedSheet(sheetName)
+        setLoading(true)
+        const formData = new FormData(); formData.append('session_id', sessionId)
+        formData.append('sheet_name', sheetName)
+        try {
+            const res = await fetch('https://api.kokihawk.com.ar/preview-lista', { method: 'POST', body: formData })
+            const data = await res.json()
+            if (data.status === 'success') {
+                setPreviewData(data.filas)
+            } else throw new Error(data.mensaje)
+        } catch { toast.error('Error al leer la hoja.') } finally { setLoading(false) }
+    }
+
     const handleProcess = async () => {
-        if (!file || mapping.sku === -1 || mapping.precio === -1) return
+        if (!sessionId || mapping.sku === -1 || mapping.precio === -1) return
         setLoading(true)
         const formData = new FormData()
-        formData.append('file', file)
-        formData.append('proveedor', 'generico')
+        formData.append('session_id', sessionId)
+        formData.append('proveedor', proveedorSel || 'generico')
+        formData.append('user_id', user.id)
         formData.append('aumento', aumento)
         formData.append('ajuste_meli', ajusteMeli)
         formData.append('ajuste_tn', ajusteTN)
@@ -350,6 +415,7 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
         formData.append('col_desc', mapping.desc.toString())
         formData.append('col_precio', mapping.precio.toString())
         formData.append('fila_inicio', mapping.startRow.toString())
+        if (selectedSheet) formData.append('sheet_name', selectedSheet)
 
         if (integraciones?.meli_access_token) {
             formData.append('meli_token', integraciones.meli_access_token)
@@ -389,16 +455,29 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
         } catch { toast.error('Error al procesar.') } finally { setLoading(false) }
     }
 
-    const handleSaveCatalogo = async () => {
+    const [lastBatchId, setLastBatchId] = useState<string | null>(null)
+
+    const handleSaveCatalogo = async (mode: 'linked' | 'all') => {
         if (!results.length) return
         setLoading(true)
         try {
             const prov = proveedorSel || 'General'
+            const batchId = crypto.randomUUID()
+            const source = mode === 'linked'
+                ? results.filter(p => p.sku_meli || p.sku_tn)
+                : results
+
+            if (!source.length) {
+                toast.error('No hay productos para guardar con esta opción.')
+                return
+            }
+
             const uniqueDataMap = new Map()
-            results.forEach(p => {
+            source.forEach(p => {
                 const cleanSku = p.sku.toString().trim().toUpperCase()
                 uniqueDataMap.set(cleanSku, {
                     user_id: user.id, sku: cleanSku, proveedor: prov,
+                    batch_id: batchId,
                     descripcion: p.descripcion, precio_final: p.precio_final,
                     precio_meli: p.precio_meli ?? null,
                     precio_tn: p.precio_tn ?? null,
@@ -415,8 +494,32 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                 )
                 if (error) throw error
             }
-            toast.success(`¡Catálogo actualizado! (${prov}) — ${dataToSave.length} productos.`)
+            setLastBatchId(batchId)
+            toast.success(`¡Catálogo guardado! (${prov}) — ${dataToSave.length} productos · Lote ${batchId.slice(0, 8)}`)
         } catch (err: any) { toast.error('Error al guardar en el catálogo: ' + err.message) }
+        finally { setLoading(false) }
+    }
+
+    const handleUndoLastImport = async () => {
+        if (!lastBatchId) return
+        setLoading(true)
+        try {
+            const { data: { session } } = await supabase.auth.getSession()
+            const jwt = session?.access_token
+            if (!jwt) { toast.error('Sesión expirada. Recargá la página.'); return }
+
+            const res = await fetch(`https://api.kokihawk.com.ar/catalogo/importacion/${lastBatchId}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${jwt}` },
+            })
+            const data = await res.json()
+            if (res.ok && data.status === 'ok') {
+                toast.success(`✓ Importación deshecha — ${data.eliminados} productos eliminados del catálogo`)
+                setLastBatchId(null)
+            } else {
+                toast.error('Error al deshacer: ' + (data.error ?? 'Intentalo de nuevo'))
+            }
+        } catch { toast.error('Error de red al deshacer la importación') }
         finally { setLoading(false) }
     }
 
@@ -590,6 +693,13 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
     const isFilterPending = filterMeli !== deferredFilterMeli || filterTN !== deferredFilterTN || searchQuery !== deferredSearchQuery
     const canProcess = mapping.sku !== -1 && mapping.precio !== -1
 
+    const autoAppliedCols = useMemo(() => ({
+        sku: autoDetectSource === 'memory' ? providerMemory?.col_sku : autoDetectSource === 'smart' ? smartMapping?.col_sku : undefined,
+        desc: autoDetectSource === 'memory' ? providerMemory?.col_desc : autoDetectSource === 'smart' ? smartMapping?.col_desc : undefined,
+        precio: autoDetectSource === 'memory' ? providerMemory?.col_precio : autoDetectSource === 'smart' ? smartMapping?.col_precio : undefined,
+        startRow: autoDetectSource === 'memory' ? providerMemory?.fila_inicio : autoDetectSource === 'smart' ? smartMapping?.fila_inicio : undefined,
+    }), [autoDetectSource, providerMemory, smartMapping])
+
     // ── Detección de SKUs duplicados ──
     const duplicateSkus = useMemo(() => {
         const counts: Record<string, number> = {}
@@ -620,56 +730,130 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
 
             {/* ── STEP 1 ── */}
             {step === 1 && (
-                <div className="max-w-xl mx-auto space-y-8 mt-4 md:mt-8">
-                    <div className="text-center space-y-2">
-                        <div className="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center mx-auto mb-4">
-                            <FileSpreadsheet className="h-7 w-7 text-primary" />
+                <div className="max-w-xl mx-auto space-y-6 mt-4 md:mt-8">
+                    {/* ── Proveedor selector ── */}
+                    <div className="bg-card border border-border/60 rounded-2xl p-5 space-y-3">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center flex-shrink-0">
+                                <DatabaseZap className="h-5 w-5 text-primary" />
+                            </div>
+                            <div>
+                                <h3 className="text-sm font-black text-foreground">Seleccioná el proveedor</h3>
+                                <p className="text-[10px] text-muted-foreground">Elegí un proveedor existente o creá uno nuevo para continuar</p>
+                            </div>
                         </div>
-                        <h1 className="text-2xl md:text-3xl font-black text-foreground tracking-tight">Motor de Listas</h1>
-                        <p className="text-muted-foreground text-base">Subí tu lista de precios en Excel o CSV para comenzar.</p>
+                        {showNewProv ? (
+                            <div className="flex gap-2">
+                                <Input type="text" value={newProvName} onChange={(e) => setNewProvName(e.target.value)}
+                                    placeholder="Nombre del proveedor..." autoFocus
+                                    onKeyDown={(e) => e.key === 'Enter' && crearProveedor()}
+                                    className="h-10 text-sm bg-secondary/40 border-border/60 focus:border-primary/50 flex-1" />
+                                <Button size="sm" onClick={crearProveedor} disabled={!newProvName.trim()} className="h-10 px-4 bg-primary hover:bg-primary/90 text-xs font-bold">
+                                    Crear
+                                </Button>
+                                <Button size="sm" variant="ghost" onClick={() => { setShowNewProv(false); setNewProvName('') }} className="h-10 px-3 text-xs">
+                                    Cancelar
+                                </Button>
+                            </div>
+                        ) : (
+                            <div className="flex gap-2">
+                                <select value={proveedorSel} onChange={(e) => setProveedorSel(e.target.value)}
+                                    className="h-10 flex-1 text-sm font-medium border border-border/60 rounded-lg px-3 outline-none bg-secondary/40 text-foreground focus:border-primary/50">
+                                    <option value="">Seleccionar proveedor...</option>
+                                    {proveedores.map(p => <option key={p.id} value={p.nombre}>{p.nombre}</option>)}
+                                </select>
+                                <button onClick={() => setShowNewProv(true)} title="Crear proveedor"
+                                    className="h-10 w-10 flex-shrink-0 flex items-center justify-center rounded-lg border border-dashed border-border/60 text-muted-foreground hover:text-foreground hover:border-primary/40 hover:bg-primary/5 transition-colors text-lg font-medium">+</button>
+                            </div>
+                        )}
                     </div>
-                    <div
-                        onClick={() => fileInputRef.current?.click()}
-                        onDragOver={(e) => { e.preventDefault(); setIsDragging(true) }}
-                        onDragEnter={(e) => { e.preventDefault(); setIsDragging(true) }}
-                        onDragLeave={() => setIsDragging(false)}
-                        onDrop={(e) => {
-                            e.preventDefault(); setIsDragging(false)
-                            const droppedFile = e.dataTransfer.files?.[0]
-                            if (droppedFile) {
-                                const ext = droppedFile.name.split('.').pop()?.toLowerCase()
-                                if (['xlsx', 'xls', 'csv'].includes(ext || '')) {
-                                    setFile(droppedFile); setLoading(true)
-                                    const formData = new FormData(); formData.append('file', droppedFile)
-                                    fetch('https://api.kokihawk.com.ar/preview-lista', { method: 'POST', body: formData })
-                                        .then(r => r.json()).then(data => {
-                                            if (data.status === 'success') { setPreviewData(data.filas); setStep(2) }
-                                            else toast.error(data.mensaje || 'Error al leer')
-                                        }).catch(() => toast.error('Error al leer el archivo.')).finally(() => setLoading(false))
-                                } else { toast.error('Formato no soportado. Usá .xlsx, .xls o .csv.') }
-                            }
-                        }}
-                        className={`group relative border-2 border-dashed rounded-2xl bg-card transition-all duration-200 cursor-pointer overflow-hidden ${isDragging
-                            ? 'border-primary bg-primary/5 scale-[1.02] shadow-lg shadow-primary/10'
-                            : 'border-border/60 hover:border-primary/50 hover:bg-primary/3'
-                        }`}>
-                        <div className="absolute inset-0 opacity-[0.02] pointer-events-none" style={{ backgroundImage: `repeating-linear-gradient(0deg, transparent, transparent 24px, currentColor 24px, currentColor 25px), repeating-linear-gradient(90deg, transparent, transparent 24px, currentColor 24px, currentColor 25px)` }} />
-                        <div className="relative p-12 md:p-16 flex flex-col items-center gap-5 text-center">
-                            <div className={`w-16 h-16 rounded-2xl border flex items-center justify-center transition-all duration-200 ${isDragging
-                                ? 'bg-primary/15 border-primary/30 scale-110'
-                                : 'bg-primary/8 border-primary/15 group-hover:bg-primary/12 group-hover:scale-105'
+
+                    {/* ── Upload area ── */}
+                    <div className={!proveedorSel ? 'pointer-events-none opacity-40' : ''}>
+                        {!proveedorSel && (
+                            <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/25 rounded-xl px-4 py-2.5 mb-4">
+                                <AlertTriangle className="h-4 w-4 text-amber-500 flex-shrink-0" />
+                                <p className="text-xs font-semibold text-amber-400">Seleccioná un proveedor para habilitar la carga de archivos</p>
+                            </div>
+                        )}
+                        <div className="text-center space-y-2 mb-4">
+                            <div className="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center mx-auto mb-4">
+                                <FileSpreadsheet className="h-7 w-7 text-primary" />
+                            </div>
+                            <h1 className="text-2xl md:text-3xl font-black text-foreground tracking-tight">Motor de Listas</h1>
+                            <p className="text-muted-foreground text-base">Subí tu lista de precios en Excel o CSV para comenzar.</p>
+                        </div>
+                        <div
+                            onClick={() => proveedorSel && fileInputRef.current?.click()}
+                            onDragOver={(e) => { e.preventDefault(); if (proveedorSel) setIsDragging(true) }}
+                            onDragEnter={(e) => { e.preventDefault(); if (proveedorSel) setIsDragging(true) }}
+                            onDragLeave={() => setIsDragging(false)}
+                            onDrop={(e) => {
+                                e.preventDefault(); setIsDragging(false)
+                                if (!proveedorSel) { toast.error('Seleccioná un proveedor primero'); return }
+                                const droppedFile = e.dataTransfer.files?.[0]
+                                if (droppedFile) {
+                                    const ext = droppedFile.name.split('.').pop()?.toLowerCase()
+                                    if (['xlsx', 'xls', 'csv'].includes(ext || '')) {
+                                        setFile(droppedFile); setLoading(true)
+                                        const formData = new FormData(); formData.append('file', droppedFile)
+                                        if (user?.id) formData.append('user_id', user.id)
+                                        if (proveedorSel) formData.append('proveedor_nombre', proveedorSel)
+                                        fetch('https://api.kokihawk.com.ar/upload-excel', { method: 'POST', body: formData })
+                                            .then(r => r.json()).then(data => {
+                                                if (data.status === 'success') {
+                                                    setSessionId(data.session_id)
+                                                    setPreviewData(data.filas)
+                                                    if (data.sheets && data.sheets.length > 1) {
+                                                        setExcelSheets(data.sheets)
+                                                        setSelectedSheet(data.selected_sheet || data.sheets[0])
+                                                    }
+                                                    setProviderMemory(data.provider_memory || null)
+                                                    setSmartMapping(data.smart_mapping || null)
+                                                    const pm = data.provider_memory
+                                                    const sm = data.smart_mapping
+                                                    let source: 'memory' | 'smart' | null = null
+                                                    if (pm?.col_sku != null && pm.col_sku !== -1) {
+                                                        setMapping({ sku: pm.col_sku, desc: pm.col_desc ?? -1, precio: pm.col_precio ?? -1, startRow: pm.fila_inicio ?? 0 })
+                                                        source = 'memory'
+                                                        if (pm.aumento_default) setAumento(pm.aumento_default)
+                                                        if (pm.redondeo_default) setRedondeo(pm.redondeo_default)
+                                                        if (pm.ajuste_meli_default) setAjusteMeli(pm.ajuste_meli_default)
+                                                        if (pm.ajuste_tn_default) setAjusteTN(pm.ajuste_tn_default)
+                                                    } else if (sm?.col_sku != null && sm.col_sku !== -1) {
+                                                        setMapping({ sku: sm.col_sku, desc: sm.col_desc ?? -1, precio: sm.col_precio ?? -1, startRow: sm.fila_inicio ?? 0 })
+                                                        source = 'smart'
+                                                    }
+                                                    setAutoDetectSource(source)
+                                                    setStep(2)
+                                                }
+                                                else toast.error(data.mensaje || 'Error al leer')
+                                            }).catch(() => toast.error('Error al leer el archivo.')).finally(() => setLoading(false))
+                                    } else { toast.error('Formato no soportado. Usá .xlsx, .xls o .csv.') }
+                                }
+                            }}
+                            className={`group relative border-2 border-dashed rounded-2xl bg-card transition-all duration-200 cursor-pointer overflow-hidden ${isDragging
+                                ? 'border-primary bg-primary/5 scale-[1.02] shadow-lg shadow-primary/10'
+                                : 'border-border/60 hover:border-primary/50 hover:bg-primary/3'
                             }`}>
-                                <Upload className={`h-7 w-7 text-primary transition-transform ${isDragging ? 'animate-bounce' : ''}`} />
+                            <div className="absolute inset-0 opacity-[0.02] pointer-events-none" style={{ backgroundImage: `repeating-linear-gradient(0deg, transparent, transparent 24px, currentColor 24px, currentColor 25px), repeating-linear-gradient(90deg, transparent, transparent 24px, currentColor 24px, currentColor 25px)` }} />
+                            <div className="relative p-12 md:p-16 flex flex-col items-center gap-5 text-center">
+                                <div className={`w-16 h-16 rounded-2xl border flex items-center justify-center transition-all duration-200 ${isDragging
+                                    ? 'bg-primary/15 border-primary/30 scale-110'
+                                    : 'bg-primary/8 border-primary/15 group-hover:bg-primary/12 group-hover:scale-105'
+                                }`}>
+                                    <Upload className={`h-7 w-7 text-primary transition-transform ${isDragging ? 'animate-bounce' : ''}`} />
+                                </div>
+                                <div className="space-y-1">
+                                    <p className="text-sm font-bold text-foreground">{isDragging ? 'Soltá el archivo acá' : 'Arrastrá tu archivo o hacé clic para elegir'}</p>
+                                    <p className="text-xs text-muted-foreground">Formatos: <span className="font-mono font-bold">.xlsx</span> · <span className="font-mono font-bold">.xls</span> · <span className="font-mono font-bold">.csv</span></p>
+                                </div>
+                                <input type="file" ref={fileInputRef} onChange={handlePreview} className="hidden" accept=".xlsx,.xls,.csv" />
+                                <Button size="lg" disabled={loading}
+                                    className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold shadow-lg shadow-primary/25 h-11 px-8 pointer-events-none">
+                                    {loading ? <><Loader2 className="animate-spin h-4 w-4 mr-2" />Leyendo...</> : 'Elegir Archivo'}
+                                </Button>
                             </div>
-                            <div className="space-y-1">
-                                <p className="text-sm font-bold text-foreground">{isDragging ? 'Soltá el archivo acá' : 'Arrastrá tu archivo o hacé clic para elegir'}</p>
-                                <p className="text-xs text-muted-foreground">Formatos: <span className="font-mono font-bold">.xlsx</span> · <span className="font-mono font-bold">.xls</span> · <span className="font-mono font-bold">.csv</span></p>
-                            </div>
-                            <input type="file" ref={fileInputRef} onChange={handlePreview} className="hidden" accept=".xlsx,.xls,.csv" />
-                            <Button size="lg" disabled={loading}
-                                className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold shadow-lg shadow-primary/25 h-11 px-8 pointer-events-none">
-                                {loading ? <><Loader2 className="animate-spin h-4 w-4 mr-2" />Leyendo...</> : 'Elegir Archivo'}
-                            </Button>
                         </div>
                     </div>
                     <div className="flex items-start gap-2.5 bg-secondary/30 border border-border/50 rounded-xl p-4">
@@ -683,57 +867,101 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
 
             {/* ── STEP 2 ── */}
             {step === 2 && (
-                <div className="space-y-4">
-                    <div className="bg-card border border-border/60 rounded-2xl p-4 shadow-sm">
-                        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-                            <div className="flex flex-wrap items-end gap-3">
-                                <Button variant="ghost" size="sm" onClick={() => setStep(1)} className="text-muted-foreground h-8 -ml-1">
-                                    <ArrowLeft className="h-3.5 w-3.5 mr-1" /> Cambiar archivo
+                <div className="space-y-5">
+                    {/* ── Top bar: back + actions ── */}
+                    <div className="flex items-center justify-between gap-3 flex-wrap">
+                        <Button variant="ghost" size="sm" onClick={() => setStep(1)} className="text-muted-foreground h-9">
+                            <ArrowLeft className="h-4 w-4 mr-1.5" /> Cambiar archivo
+                        </Button>
+                        <div className="flex items-center gap-2">
+                            {showPlantillaInput ? (
+                                <div className="flex items-end gap-1.5">
+                                    <div className="space-y-1">
+                                        <Label className="text-[10px] font-semibold text-muted-foreground">Nombre</Label>
+                                        <Input type="text" value={plantillaName} onChange={(e) => setPlantillaName(e.target.value)}
+                                            placeholder="Mi plantilla..." autoFocus
+                                            onKeyDown={(e) => e.key === 'Enter' && guardarPlantilla()}
+                                            className="h-9 w-36 text-xs bg-secondary/40 border-border/60 focus:border-primary/50" />
+                                    </div>
+                                    <Button size="sm" onClick={guardarPlantilla} className="h-9 px-3 bg-primary hover:bg-primary/90 text-xs font-bold">
+                                        <Save className="h-3.5 w-3.5" />
+                                    </Button>
+                                    <Button size="sm" variant="ghost" onClick={() => { setShowPlantillaInput(false); setPlantillaName('') }} className="h-9 px-2 text-xs">
+                                        <X className="h-3.5 w-3.5" />
+                                    </Button>
+                                </div>
+                            ) : (
+                                <Button variant="outline" onClick={() => setShowPlantillaInput(true)} disabled={!canProcess} size="sm"
+                                    className="border-border/60 text-xs font-bold gap-1.5">
+                                    <Save className="h-3.5 w-3.5" /> Guardar mapeo
                                 </Button>
+                            )}
+                            <Button onClick={handleProcess} disabled={loading || !canProcess}
+                                className="bg-primary hover:bg-primary/90 font-bold shadow-md shadow-primary/20 gap-1.5 text-sm">
+                                {loading ? <Loader2 className="animate-spin h-4 w-4" /> : <Zap className="h-4 w-4" />}
+                                Calcular Precios
+                            </Button>
+                        </div>
+                    </div>
 
-                                {/* Proveedor selector */}
-                                <div className="space-y-1">
-                                    <Label className="text-[9px] font-black uppercase tracking-widest text-emerald-400">Proveedor</Label>
+                    {/* ── Sheet selector ── */}
+                    {excelSheets.length > 1 && (
+                        <div className="flex items-center gap-3 bg-secondary/30 border border-border/60 rounded-xl px-4 py-2.5">
+                            <FileSpreadsheet className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                            <span className="text-xs font-semibold text-muted-foreground">Hoja:</span>
+                            <select value={selectedSheet} onChange={e => handleSheetChange(e.target.value)}
+                                className="text-xs font-semibold bg-background border border-border/60 rounded-lg px-3 py-1.5 text-foreground">
+                                {excelSheets.map(s => <option key={s} value={s}>{s}</option>)}
+                            </select>
+                            <span className="text-[10px] text-muted-foreground/50">
+                                {excelSheets.length} hojas detectadas
+                            </span>
+                        </div>
+                    )}
+
+                    {/* ── Settings grid ── */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        {/* Card: Configuración */}
+                        <div className="bg-card border border-border/60 rounded-2xl p-5 space-y-4">
+                            <h3 className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Configuración</h3>
+                            <div className="space-y-3.5">
+                                <div>
+                                    <Label className="text-[11px] font-semibold">Proveedor</Label>
                                     {showNewProv ? (
-                                        <div className="flex gap-1">
+                                        <div className="flex gap-1 mt-1">
                                             <Input type="text" value={newProvName} onChange={(e) => setNewProvName(e.target.value)}
                                                 placeholder="Nombre..." autoFocus onKeyDown={(e) => e.key === 'Enter' && crearProveedor()}
-                                                className="h-9 w-32 text-sm bg-secondary/40 border-emerald-500/30 focus:border-emerald-500/50" />
-                                            <Button size="sm" onClick={crearProveedor} className="h-9 px-2 bg-emerald-600 hover:bg-emerald-700 text-xs font-bold">✓</Button>
+                                                className="h-9 w-32 text-sm bg-secondary/40 border-border/60 focus:border-primary/50" />
+                                            <Button size="sm" onClick={crearProveedor} className="h-9 px-2 bg-primary hover:bg-primary/90 text-xs font-bold">✓</Button>
                                             <Button size="sm" variant="ghost" onClick={() => setShowNewProv(false)} className="h-9 px-2 text-xs">✕</Button>
                                         </div>
                                     ) : (
-                                        <div className="flex gap-1">
+                                        <div className="flex gap-1 mt-1">
                                             <select value={proveedorSel} onChange={(e) => setProveedorSel(e.target.value)}
-                                                className="h-9 text-sm font-semibold border border-border/60 rounded-lg px-3 outline-none bg-secondary/40 text-foreground focus:border-emerald-500/50">
+                                                className="h-9 w-full text-sm font-medium border border-border/60 rounded-lg px-3 outline-none bg-secondary/40 text-foreground focus:border-primary/50">
                                                 <option value="">Seleccionar...</option>
                                                 {proveedores.map(p => <option key={p.id} value={p.nombre}>{p.nombre}</option>)}
                                             </select>
                                             <button onClick={() => setShowNewProv(true)} title="Crear proveedor"
-                                                className="h-9 w-9 flex items-center justify-center rounded-lg border border-dashed border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 transition-colors text-lg font-bold">+</button>
+                                                className="h-9 w-9 flex-shrink-0 flex items-center justify-center rounded-lg border border-dashed border-border/60 text-muted-foreground hover:text-foreground hover:border-primary/40 hover:bg-primary/5 transition-colors text-lg font-medium">+</button>
                                         </div>
                                     )}
                                 </div>
                                 {plantillas.length > 0 && (
-                                    <div className="space-y-1">
-                                        <Label className="text-[9px] font-black uppercase tracking-widest text-primary">Plantilla guardada</Label>
+                                    <div>
+                                        <Label className="text-[11px] font-semibold">Plantilla guardada</Label>
                                         <select onChange={(e) => cargarPlantilla(e.target.value)}
-                                            className="h-9 text-sm font-semibold border border-border/60 rounded-lg px-3 outline-none bg-secondary/40 text-foreground focus:border-primary/50">
+                                            className="mt-1 h-9 w-full text-sm font-medium border border-border/60 rounded-lg px-3 outline-none bg-secondary/40 text-foreground focus:border-primary/50">
                                             <option value="">Seleccionar...</option>
                                             {plantillas.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
                                         </select>
                                     </div>
                                 )}
-
-                                {/* Dropdown diccionario — Step 2 */}
                                 {diccionarios.length > 0 && (
-                                    <div className="space-y-1">
-                                        <Label className="text-[9px] font-black uppercase tracking-widest text-violet-400">Diccionario SKUs</Label>
-                                        <select
-                                            value={diccionarioSelId}
-                                            onChange={e => setDiccionarioSelId(e.target.value)}
-                                            className="h-9 text-sm font-semibold border border-border/60 rounded-lg px-3 outline-none bg-secondary/40 text-foreground focus:border-violet-500/50"
-                                        >
+                                    <div>
+                                        <Label className="text-[11px] font-semibold">Diccionario SKUs</Label>
+                                        <select value={diccionarioSelId} onChange={e => setDiccionarioSelId(e.target.value)}
+                                            className="mt-1 h-9 w-full text-sm font-medium border border-border/60 rounded-lg px-3 outline-none bg-secondary/40 text-foreground focus:border-primary/50">
                                             <option value="">Sin diccionario</option>
                                             {diccionarios.map(d => (
                                                 <option key={d.id} value={d.id}>{d.nombre_proveedor}</option>
@@ -741,28 +969,25 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                                         </select>
                                     </div>
                                 )}
+                            </div>
+                        </div>
 
-                                <div className="space-y-1">
-                                    <Label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Aumento %</Label>
+                        {/* Card: Ajustes */}
+                        <div className="bg-card border border-border/60 rounded-2xl p-5 space-y-4 relative">
+                            {autoDetectSource === 'memory' && (
+                                <span className="absolute top-3 right-3 text-[9px] font-black uppercase px-1.5 py-0.5 rounded-md border bg-emerald-500/10 border-emerald-500/30 text-emerald-400">📦 Pre-cargado</span>
+                            )}
+                            <h3 className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Ajustes de precios</h3>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <Label className="text-[11px] font-semibold">Aumento %</Label>
                                     <Input type="number" value={aumento} onChange={(e) => setAumento(e.target.value)}
-                                        className="h-9 w-24 font-bold text-sm bg-secondary/40 border-border/60 focus:border-primary/50" />
+                                        className={`mt-1 h-9 font-medium text-sm bg-secondary/40 border-border/60 focus:border-primary/50 ${autoDetectSource === 'memory' && providerMemory?.aumento_default ? 'ring-1 ring-emerald-500/30 border-emerald-500/40' : ''}`} />
                                 </div>
-                                <div className="space-y-1">
-                                    <Label className="text-[9px] font-black uppercase tracking-widest text-amber-400">Ajuste MeLi %</Label>
-                                    <Input type="number" value={ajusteMeli} onChange={(e) => setAjusteMeli(e.target.value)}
-                                        placeholder="0"
-                                        className="h-9 w-24 font-bold text-sm bg-secondary/40 border-amber-500/30 focus:border-amber-500/50" />
-                                </div>
-                                <div className="space-y-1">
-                                    <Label className="text-[9px] font-black uppercase tracking-widest text-blue-400">Ajuste TN %</Label>
-                                    <Input type="number" value={ajusteTN} onChange={(e) => setAjusteTN(e.target.value)}
-                                        placeholder="0"
-                                        className="h-9 w-24 font-bold text-sm bg-secondary/40 border-blue-500/30 focus:border-blue-500/50" />
-                                </div>
-                                <div className="space-y-1">
-                                    <Label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Redondeo</Label>
+                                <div>
+                                    <Label className="text-[11px] font-semibold">Redondeo</Label>
                                     <select value={redondeo} onChange={(e) => setRedondeo(e.target.value)}
-                                        className="h-9 text-sm font-semibold border border-border/60 rounded-lg px-3 outline-none bg-secondary/40 text-foreground focus:border-primary/50">
+                                        className={`mt-1 h-9 w-full text-sm font-medium border border-border/60 rounded-lg px-3 outline-none bg-secondary/40 text-foreground focus:border-primary/50 ${autoDetectSource === 'memory' && providerMemory?.redondeo_default ? 'ring-1 ring-emerald-500/30 border-emerald-500/40' : ''}`}>
                                         <option value="0">Sin redondeo</option>
                                         <option value="10">A la decena ($10)</option>
                                         <option value="50">A los $50</option>
@@ -770,49 +995,63 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                                         <option value="1000">Al millar ($1000)</option>
                                     </select>
                                 </div>
-                            </div>
-                            <div className="flex gap-2 flex-shrink-0">
-                                <Button variant="outline" onClick={guardarPlantilla} disabled={!canProcess} size="sm"
-                                    className="border-border/60 text-xs font-bold gap-1.5">
-                                    <Save className="h-3.5 w-3.5" /> Guardar mapeo
-                                </Button>
-                                <Button onClick={handleProcess} disabled={loading || !canProcess}
-                                    className="bg-primary hover:bg-primary/90 font-bold shadow-md shadow-primary/20 gap-1.5 text-sm">
-                                    {loading ? <Loader2 className="animate-spin h-4 w-4" /> : <Zap className="h-4 w-4" />}
-                                    Calcular Precios
-                                </Button>
+                                <div>
+                                    <Label className="text-[11px] font-semibold">Ajuste MeLi %</Label>
+                                    <Input type="number" value={ajusteMeli} onChange={(e) => setAjusteMeli(e.target.value)} placeholder="0"
+                                        className={`mt-1 h-9 font-medium text-sm bg-secondary/40 border-border/60 focus:border-primary/50 ${autoDetectSource === 'memory' && providerMemory?.ajuste_meli_default ? 'ring-1 ring-emerald-500/30 border-emerald-500/40' : ''}`} />
+                                </div>
+                                <div>
+                                    <Label className="text-[11px] font-semibold">Ajuste TN %</Label>
+                                    <Input type="number" value={ajusteTN} onChange={(e) => setAjusteTN(e.target.value)} placeholder="0"
+                                        className={`mt-1 h-9 font-medium text-sm bg-secondary/40 border-border/60 focus:border-primary/50 ${autoDetectSource === 'memory' && providerMemory?.ajuste_tn_default ? 'ring-1 ring-emerald-500/30 border-emerald-500/40' : ''}`} />
+                                </div>
                             </div>
                         </div>
                     </div>
-                    <div className="flex flex-wrap gap-2 items-center">
-                        <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mr-1">Asignar columnas:</span>
-                        {[
-                            { label: 'CÓDIGO', color: 'bg-blue-500', active: mapping.sku !== -1 },
-                            { label: 'DESC.', color: 'bg-emerald-500', active: mapping.desc !== -1 },
-                            { label: 'PRECIO', color: 'bg-primary', active: mapping.precio !== -1 },
-                        ].map(item => (
-                            <div key={item.label} className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[10px] font-bold transition-colors ${item.active ? 'bg-card border-border/70' : 'bg-muted/30 border-border/40'}`}>
-                                <div className={`w-2 h-2 rounded-full ${item.color} ${!item.active ? 'opacity-30' : ''}`} />
-                                <span className={item.active ? 'text-foreground' : 'text-muted-foreground'}>{item.label}</span>
-                                {item.active && <CheckCircle2 className="h-3 w-3 text-emerald-500" />}
-                            </div>
-                        ))}
-                        {!canProcess && <p className="text-[10px] text-muted-foreground/60 ml-1">← Hacé clic en los botones de cada columna</p>}
-                    </div>
+
+                    {/* ── Card: Mapeo de columnas ── */}
                     <div className="bg-card border border-border/60 rounded-2xl overflow-hidden shadow-sm">
+                        <div className="px-5 py-3.5 border-b border-border/40 flex items-center justify-between gap-3 flex-wrap">
+                            <div className="flex items-center gap-3">
+                                <h3 className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Mapeo de columnas</h3>
+                                <div className="flex items-center gap-3">
+                                    <div className="flex items-center gap-1.5">
+                                        <div className={`w-2 h-2 rounded-full bg-blue-500 ${mapping.sku === -1 ? 'opacity-30' : ''}`} />
+                                        <span className={`text-[10px] font-bold ${mapping.sku !== -1 ? 'text-foreground' : 'text-muted-foreground/50'}`}>CÓDIGO</span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                        <div className={`w-2 h-2 rounded-full bg-emerald-500 ${mapping.desc === -1 ? 'opacity-30' : ''}`} />
+                                        <span className={`text-[10px] font-bold ${mapping.desc !== -1 ? 'text-foreground' : 'text-muted-foreground/50'}`}>DESC.</span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                        <div className={`w-2 h-2 rounded-full bg-primary ${mapping.precio === -1 ? 'opacity-30' : ''}`} />
+                                        <span className={`text-[10px] font-bold ${mapping.precio !== -1 ? 'text-foreground' : 'text-muted-foreground/50'}`}>PRECIO</span>
+                                    </div>
+                                </div>
+                            </div>
+                            {!canProcess && <p className="text-[10px] text-muted-foreground/40">Asigná cada columna usando los botones de abajo</p>}
+                            {autoDetectSource && (
+                                <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md border ${autoDetectSource === 'memory'
+                                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                                    : 'bg-violet-500/10 border-violet-500/30 text-violet-400'
+                                }`}>
+                                    {autoDetectSource === 'memory' ? '📦 Memoria proveedor' : '🤖 Mapeo inteligente'}
+                                </span>
+                            )}
+                        </div>
                         <div className="overflow-x-auto">
                             <table className="w-full text-sm border-collapse min-w-[400px]">
                                 <thead>
-                                    <tr className="border-b border-border/60 bg-secondary/40">
-                                        <th className="w-20 p-3 text-left font-bold text-[10px] text-muted-foreground border-r border-border/30">Fila</th>
+                                    <tr className="border-b border-border/60 bg-secondary/30">
+                                        <th className="w-16 p-3 text-left font-bold text-[10px] text-muted-foreground border-r border-border/30">Fila</th>
                                         {previewData[0]?.map((_: any, idx: number) => (
-                                            <th key={idx} className="p-3 border-r border-border/30 min-w-[130px]">
-                                                <div className="flex flex-col gap-1.5">
+                                            <th key={idx} className="p-2.5 border-r border-border/30 min-w-[130px]">
+                                                <div className="flex flex-col gap-1.5 items-center">
                                                     <span className="text-[9px] font-bold text-muted-foreground/50">Col. {idx + 1}</span>
                                                     <div className="flex gap-1">
-                                                        <MappingButton label="Cód" color="blue" active={mapping.sku === idx} onClick={() => setMapping(m => ({ ...m, sku: idx }))} />
-                                                        <MappingButton label="Desc" color="green" active={mapping.desc === idx} onClick={() => setMapping(m => ({ ...m, desc: idx }))} />
-                                                        <MappingButton label="Precio" color="orange" active={mapping.precio === idx} onClick={() => setMapping(m => ({ ...m, precio: idx }))} />
+                                                        <MappingButton label="Cód" color="blue" active={mapping.sku === idx} autoDetected={autoAppliedCols.sku === idx && mapping.sku !== idx} onClick={() => setMapping(m => ({ ...m, sku: idx }))} />
+                                                        <MappingButton label="Desc" color="green" active={mapping.desc === idx} autoDetected={autoAppliedCols.desc === idx && mapping.desc !== idx} onClick={() => setMapping(m => ({ ...m, desc: idx }))} />
+                                                        <MappingButton label="Precio" color="orange" active={mapping.precio === idx} autoDetected={autoAppliedCols.precio === idx && mapping.precio !== idx} onClick={() => setMapping(m => ({ ...m, precio: idx }))} />
                                                     </div>
                                                 </div>
                                             </th>
@@ -822,15 +1061,20 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                                 <tbody>
                                     {previewData.map((fila, fIdx) => (
                                         <tr key={fIdx} onClick={() => setMapping(m => ({ ...m, startRow: fIdx }))}
-                                            className={`cursor-pointer border-b border-border/20 transition-colors ${mapping.startRow === fIdx ? 'bg-primary/8' : 'hover:bg-secondary/20'}`}>
-                                            <td className="p-3 border-r border-border/20 text-center">
-                                                {mapping.startRow === fIdx
-                                                    ? <span className="text-[9px] font-black text-primary bg-primary/10 px-1.5 py-0.5 rounded">▶ INICIO</span>
-                                                    : <span className="text-[10px] text-muted-foreground/40">{fIdx + 1}</span>
-                                                }
+                                            className={`cursor-pointer border-b border-border/15 transition-colors ${mapping.startRow === fIdx ? 'bg-primary/5' : 'hover:bg-secondary/10'}`}>
+                                            <td className="p-3 border-r border-border/15 text-center">
+                                                <div className="flex items-center justify-center gap-1">
+                                                    {autoAppliedCols.startRow === fIdx && mapping.startRow !== fIdx && (
+                                                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" title="Fila de inicio sugerida por IA" />
+                                                    )}
+                                                    {mapping.startRow === fIdx
+                                                        ? <span className="text-[9px] font-black text-primary bg-primary/8 px-2 py-0.5 rounded-md">▶ INICIO</span>
+                                                        : <span className="text-[10px] text-muted-foreground/30">{fIdx + 1}</span>
+                                                    }
+                                                </div>
                                             </td>
                                             {fila.map((c: any, cIdx: number) => (
-                                                <td key={cIdx} className={`p-3 text-xs border-r border-border/15 font-medium truncate max-w-[180px] ${mapping.sku === cIdx ? 'text-blue-400' : mapping.desc === cIdx ? 'text-emerald-400' : mapping.precio === cIdx ? 'text-primary' : 'text-muted-foreground/60'}`}>
+                                                <td key={cIdx} className={`p-3 text-xs border-r border-border/10 font-medium truncate max-w-[180px] ${mapping.sku === cIdx ? 'text-blue-400' : mapping.desc === cIdx ? 'text-emerald-400' : mapping.precio === cIdx ? 'text-primary' : 'text-muted-foreground/50'}`}>
                                                     {c}
                                                 </td>
                                             ))}
@@ -839,7 +1083,7 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                                 </tbody>
                             </table>
                         </div>
-                        <div className="px-4 py-2 bg-secondary/20 border-t border-border/40 flex items-center gap-2">
+                        <div className="px-5 py-2.5 bg-secondary/20 border-t border-border/40 flex items-center gap-2">
                             <Info className="h-3 w-3 text-muted-foreground/40" />
                             <p className="text-[10px] text-muted-foreground/50">Hacé clic en una fila para marcarla como fila de inicio de datos.</p>
                         </div>
@@ -910,10 +1154,32 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                                     className="border-border/60 text-xs font-bold gap-1.5">
                                     <Download className="h-3.5 w-3.5" /> Excel
                                 </Button>
-                                <Button onClick={handleSaveCatalogo} disabled={loading || !results.length} variant="outline" size="sm"
+                                <Button onClick={() => setConfirmModal({
+                                    title: 'Guardar solo vinculados',
+                                    desc: `Se guardarán solo los productos que tengan SKU MeLi o SKU TN asignado (${results.filter(p => p.sku_meli || p.sku_tn).length} productos). ¿Continuar?`,
+                                    action: () => handleSaveCatalogo('linked'),
+                                })} disabled={loading || !results.length} variant="outline" size="sm"
                                     className="border-violet-500/30 text-violet-400 hover:bg-violet-500/8 text-xs font-bold gap-1.5">
-                                    <DatabaseZap className="h-3.5 w-3.5" /> Guardar Catálogo
+                                    <DatabaseZap className="h-3.5 w-3.5" /> Solo Vinculados
                                 </Button>
+                                <Button onClick={() => setConfirmModal({
+                                    title: 'Guardar todo el catálogo',
+                                    desc: `Se guardarán los ${results.length} productos procesados en el catálogo (proveedor: ${proveedorSel || 'General'}). ¿Continuar?`,
+                                    action: () => handleSaveCatalogo('all'),
+                                })} disabled={loading || !results.length} variant="outline" size="sm"
+                                    className="border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/8 text-xs font-bold gap-1.5">
+                                    <Save className="h-3.5 w-3.5" /> Guardar Todo
+                                </Button>
+                                {lastBatchId && (
+                                    <Button onClick={() => setConfirmModal({
+                                        title: 'Deshacer última importación',
+                                        desc: `Se eliminarán todos los productos del lote ${lastBatchId.slice(0, 8)}… del catálogo. Esta acción no se puede revertir.`,
+                                        action: handleUndoLastImport,
+                                    })} variant="outline" size="sm"
+                                        className="border-red-500/30 text-red-400 hover:bg-red-500/8 text-xs font-bold gap-1.5">
+                                        <Undo2 className="h-3.5 w-3.5" /> Deshacer
+                                    </Button>
+                                )}
                             </div>
                         </div>
                     </div>

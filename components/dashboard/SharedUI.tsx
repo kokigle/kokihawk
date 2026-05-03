@@ -54,8 +54,8 @@ export function StepIndicator({ step }: { step: number }) {
 /* ─────────────────────────────────────────
    MappingButton  — column selector chip
 ───────────────────────────────────────── */
-export function MappingButton({ label, color, active, onClick }: {
-    label: string; color: string; active: boolean; onClick: () => void
+export function MappingButton({ label, color, active, onClick, autoDetected }: {
+    label: string; color: string; active: boolean; onClick: () => void; autoDetected?: boolean
 }) {
     const colorMap: Record<string, string> = {
         blue: active
@@ -71,9 +71,12 @@ export function MappingButton({ label, color, active, onClick }: {
     return (
         <button
             onClick={onClick}
-            className={`text-[9px] font-black uppercase tracking-wider px-2 py-1 rounded-md border transition-all duration-150 cursor-pointer ${colorMap[color]}`}
+            className={`relative text-[9px] font-black uppercase tracking-wider px-2 py-1 rounded-md border transition-all duration-150 cursor-pointer ${colorMap[color]} ${autoDetected && !active ? 'ring-1 ring-emerald-400/60 border-emerald-400/40' : ''}`}
         >
             {label}
+            {autoDetected && !active && (
+                <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-emerald-400 border border-emerald-200 shadow-sm shadow-emerald-400/30" />
+            )}
         </button>
     )
 }
