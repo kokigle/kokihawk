@@ -130,7 +130,7 @@ export default function DashboardPage() {
             .eq('estado', 'success')
             .order('created_at', { ascending: false })
             .limit(1)
-            .single()
+            .maybeSingle()
             .then(({ data }) => { if (data) setLastSync(data.created_at) })
     }, [user, supabase])
 

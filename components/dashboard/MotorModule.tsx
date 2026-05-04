@@ -11,7 +11,7 @@ import {
     Loader2, Download, ArrowLeft, Save, Upload, CheckCircle2,
     Zap, AlertTriangle, DatabaseZap, Filter, FileSpreadsheet,
     Info, ShieldAlert, ShieldCheck, TrendingDown, TrendingUp, Scale,
-    ChevronLeft, ChevronRight, Search, X, Undo2
+    ChevronLeft, ChevronRight, Search, X, Undo2, RefreshCw
 } from 'lucide-react'
 import Image from 'next/image'
 import { StepIndicator, MappingButton, PlatformBadges } from './SharedUI'
@@ -19,12 +19,26 @@ import { useSyncJobs } from '@/contexts/SyncJobsContext'
 import FloatingWidget from './FloatingWidget'
 import { toast } from 'sonner'
 import ConfirmModal from '@/components/ui/ConfirmModal'
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { AnimatePresence, motion } from 'framer-motion'
 
 // ─────────────────────────────────────────────────────────────────
 // CONSTANTES
 // ─────────────────────────────────────────────────────────────────
 const PAGE_SIZE = 30
+const IVA_OPTIONS = ['0', '10.5', '21']
+
+function aplicarRedondeo(precio: number, escala: number): number {
+    if (escala === 0) return Math.round(precio * 100) / 100
+    return Math.round(precio / escala) * escala
+}
 
 // ─────────────────────────────────────────────────────────────────
 // TIPOS
@@ -234,6 +248,7 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
     const [ajusteMeli, setAjusteMeli] = useState('0')
     const [ajusteTN, setAjusteTN] = useState('0')
     const [redondeo, setRedondeo] = useState('0')
+    const [iva, setIva] = useState('0')
     const [catalogMaps, setCatalogMaps] = useState<any>(null)
     const [proveedores, setProveedores] = useState<{id: string, nombre: string}[]>([])
     const [proveedorSel, setProveedorSel] = useState('')
@@ -257,6 +272,8 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
     const [providerMemory, setProviderMemory] = useState<any>(null)
     const [smartMapping, setSmartMapping] = useState<any>(null)
     const [autoDetectSource, setAutoDetectSource] = useState<'memory' | 'smart' | null>(null)
+    const [showFormatAlert, setShowFormatAlert] = useState(false)
+    const [formatAlertDismissed, setFormatAlertDismissed] = useState(false)
 
     // ── Paginación del Paso 3 ──
     const [currentPage, setCurrentPage] = useState(1)
@@ -297,6 +314,35 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                 .then(({ data }) => { if (data) setProveedores(data) })
         }
     }, [user]) // eslint-disable-line
+
+    // ── Detectar cambios de formato: IA vs Memoria del proveedor ──
+    useEffect(() => {
+        if (step !== 2 || !providerMemory || !smartMapping || formatAlertDismissed) return
+        const mem = providerMemory
+        const ia = smartMapping
+        const memVals: Record<string, any> = { col_sku: mem.col_sku, col_desc: mem.col_desc, col_precio: mem.col_precio, fila_inicio: mem.fila_inicio }
+        const iaVals: Record<string, any> = { col_sku: ia.col_sku, col_desc: ia.col_desc, col_precio: ia.col_precio, fila_inicio: ia.fila_inicio }
+        const changed = Object.keys(memVals).some(k => memVals[k] != null && iaVals[k] != null && memVals[k] !== iaVals[k])
+        if (changed) setShowFormatAlert(true)
+    }, [step, providerMemory, smartMapping, formatAlertDismissed])
+
+    const applySmartMapping = useCallback(() => {
+        if (!smartMapping) return
+        setMapping({
+            sku: smartMapping.col_sku ?? -1,
+            desc: smartMapping.col_desc ?? -1,
+            precio: smartMapping.col_precio ?? -1,
+            startRow: smartMapping.fila_inicio ?? 0,
+        })
+        setAutoDetectSource('smart')
+        setShowFormatAlert(false)
+        setFormatAlertDismissed(true)
+    }, [smartMapping])
+
+    const skipFormatWarning = useCallback(() => {
+        setShowFormatAlert(false)
+        setFormatAlertDismissed(true)
+    }, [])
 
     const crearProveedor = async () => {
         const name = newProvName.trim()
@@ -365,11 +411,23 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                         startRow: pm.fila_inicio ?? 0,
                     })
                     source = 'memory'
-                    if (pm.aumento_default) setAumento(pm.aumento_default)
-                    if (pm.redondeo_default) setRedondeo(pm.redondeo_default)
-                    if (pm.ajuste_meli_default) setAjusteMeli(pm.ajuste_meli_default)
-                    if (pm.ajuste_tn_default) setAjusteTN(pm.ajuste_tn_default)
-                } else if (sm?.col_sku != null && sm.col_sku !== -1) {
+if (pm.aumento_default) setAumento(pm.aumento_default)
+                     if (pm.redondeo_default) setRedondeo(pm.redondeo_default)
+                     if (pm.ajuste_meli_default) setAjusteMeli(pm.ajuste_meli_default)
+                     if (pm.ajuste_tn_default) setAjusteTN(pm.ajuste_tn_default)
+                     if (pm.iva_default) setIva(pm.iva_default)
+                     if (pm.diccionario_default) {
+                         try {
+                             const dd = typeof pm.diccionario_default === 'string'
+                                 ? JSON.parse(pm.diccionario_default)
+                                 : pm.diccionario_default
+                             if (dd?.id) {
+                                 const found = diccionarios.find(d => d.id === dd.id)
+                                 if (found) setDiccionarioSelId(dd.id)
+                             }
+                         } catch { /* json parse error, ignore */ }
+                     }
+                 } else if (sm?.col_sku != null && sm.col_sku !== -1) {
                     setMapping({
                         sku: sm.col_sku,
                         desc: sm.col_desc ?? -1,
@@ -411,6 +469,7 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
         formData.append('ajuste_meli', ajusteMeli)
         formData.append('ajuste_tn', ajusteTN)
         formData.append('redondeo', redondeo)
+        formData.append('iva_default', iva)
         formData.append('col_sku', mapping.sku.toString())
         formData.append('col_desc', mapping.desc.toString())
         formData.append('col_precio', mapping.precio.toString())
@@ -429,6 +488,8 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
             const dic = diccionarios.find(d => d.id === diccionarioSelId)
             if (dic?.contenido) {
                 formData.append('diccionario', JSON.stringify(dic.contenido))
+                formData.append('diccionario_id', dic.id)
+                formData.append('diccionario_nombre', dic.nombre_proveedor)
             }
         }
 
@@ -660,6 +721,33 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
         }))
     }, [catalogMaps])
 
+    const updateProductIVA = useCallback((index: number, newIva: string) => {
+        setResults(prev => prev.map((p, i) => {
+            if (i !== index) return p
+            const costo = p.precio_original ?? 0
+            const aumentoFloat = parseFloat(aumento || '0') / 100
+            const ivaFloat = parseFloat(newIva || '0') / 100
+            const redondeoInt = parseInt(redondeo || '0')
+
+            const precio_con_aumento = costo * (1 + aumentoFloat)
+            const precio_con_iva = precio_con_aumento * (1 + ivaFloat)
+            const precio_final = aplicarRedondeo(precio_con_iva, redondeoInt)
+
+            const ajusteMeliFloat = parseFloat(ajusteMeli || '0') / 100
+            const ajusteTNFloat = parseFloat(ajusteTN || '0') / 100
+            const precio_meli = aplicarRedondeo(precio_final * (1 + ajusteMeliFloat), redondeoInt)
+            const precio_tn = aplicarRedondeo(precio_final * (1 + ajusteTNFloat), redondeoInt)
+
+            return {
+                ...p,
+                iva_aplicado: newIva,
+                precio_final,
+                precio_meli,
+                precio_tn,
+            }
+        }))
+    }, [aumento, redondeo, ajusteMeli, ajusteTN])
+
     // ── Lista filtrada, buscada y ordenada (todos los items, no paginada aún) ──
     const processedResults = useMemo(() => {
         let filtered = [...results]
@@ -820,6 +908,18 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                                                         if (pm.redondeo_default) setRedondeo(pm.redondeo_default)
                                                         if (pm.ajuste_meli_default) setAjusteMeli(pm.ajuste_meli_default)
                                                         if (pm.ajuste_tn_default) setAjusteTN(pm.ajuste_tn_default)
+                                                        if (pm.iva_default) setIva(pm.iva_default)
+                                                        if (pm.diccionario_default) {
+                                                            try {
+                                                                const dd = typeof pm.diccionario_default === 'string'
+                                                                    ? JSON.parse(pm.diccionario_default)
+                                                                    : pm.diccionario_default
+                                                                if (dd?.id) {
+                                                                    const found = diccionarios.find(d => d.id === dd.id)
+                                                                    if (found) setDiccionarioSelId(dd.id)
+                                                                }
+                                                            } catch { /* json parse error, ignore */ }
+                                                        }
                                                     } else if (sm?.col_sku != null && sm.col_sku !== -1) {
                                                         setMapping({ sku: sm.col_sku, desc: sm.col_desc ?? -1, precio: sm.col_precio ?? -1, startRow: sm.fila_inicio ?? 0 })
                                                         source = 'smart'
@@ -995,6 +1095,7 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                                         <option value="1000">Al millar ($1000)</option>
                                     </select>
                                 </div>
+                                
                                 <div>
                                     <Label className="text-[11px] font-semibold">Ajuste MeLi %</Label>
                                     <Input type="number" value={ajusteMeli} onChange={(e) => setAjusteMeli(e.target.value)} placeholder="0"
@@ -1005,9 +1106,65 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                                     <Input type="number" value={ajusteTN} onChange={(e) => setAjusteTN(e.target.value)} placeholder="0"
                                         className={`mt-1 h-9 font-medium text-sm bg-secondary/40 border-border/60 focus:border-primary/50 ${autoDetectSource === 'memory' && providerMemory?.ajuste_tn_default ? 'ring-1 ring-emerald-500/30 border-emerald-500/40' : ''}`} />
                                 </div>
+                                <div>
+                                    <Label className="text-[11px] font-semibold">IVA %</Label>
+                                    <Select value={iva} onValueChange={setIva}>
+                                        <SelectTrigger className={`mt-1 h-9 w-full text-sm font-medium border border-border/60 rounded-lg bg-secondary/40 text-foreground focus:border-primary/50 ${autoDetectSource === 'memory' && providerMemory?.iva_default ? 'ring-1 ring-emerald-500/30 border-emerald-500/40' : ''}`}>
+                                            <SelectValue placeholder="0" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {IVA_OPTIONS.map(opt => (
+                                                <SelectItem key={opt} value={opt}>{opt}%</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
                             </div>
                         </div>
                     </div>
+
+                    {/* ── Alerta de cambio de formato ── */}
+                    {showFormatAlert && providerMemory && smartMapping && (
+                        <Alert className="border-amber-500/40 bg-amber-500/5 p-4">
+                            
+                            <AlertTitle className="text-amber-500 font-black text-sm flex items-center gap-2">
+                                ⚠️ Parece que la lista de este proveedor cambió su estructura.
+                            </AlertTitle>
+                            
+                            <AlertDescription className="text-amber-200/90 text-xs mt-2">
+                                <div className="space-y-2 leading-relaxed">
+                                    {providerMemory.col_sku !== smartMapping.col_sku && providerMemory.col_sku != null && smartMapping.col_sku != null && (
+                                        <p>La columna de <strong className="text-amber-400">SKU/Código</strong> antes era la <strong className="text-amber-400">{providerMemory.col_sku + 1}</strong>, pero ahora detectamos que está en la <strong className="text-amber-400">{smartMapping.col_sku + 1}</strong>.</p>
+                                    )}
+                                    {providerMemory.col_desc !== smartMapping.col_desc && providerMemory.col_desc != null && smartMapping.col_desc != null && (
+                                        <p>La columna de <strong className="text-amber-400">Descripción</strong> antes era la <strong className="text-amber-400">{providerMemory.col_desc + 1}</strong>, pero ahora detectamos que está en la <strong className="text-amber-400">{smartMapping.col_desc + 1}</strong>.</p>
+                                    )}
+                                    {providerMemory.col_precio !== smartMapping.col_precio && providerMemory.col_precio != null && smartMapping.col_precio != null && (
+                                        <p>La columna de <strong className="text-amber-400">Precio</strong> antes era la <strong className="text-amber-400">{providerMemory.col_precio + 1}</strong>, pero ahora detectamos que los precios están en la <strong className="text-amber-400">{smartMapping.col_precio + 1}</strong>.</p>
+                                    )}
+                                    {providerMemory.fila_inicio !== smartMapping.fila_inicio && providerMemory.fila_inicio != null && smartMapping.fila_inicio != null && (
+                                        <p>La <strong className="text-amber-400">fila de inicio</strong> de datos antes era la <strong className="text-amber-400">{providerMemory.fila_inicio + 1}</strong>, pero ahora detectamos que los datos empiezan en la fila <strong className="text-amber-400">{smartMapping.fila_inicio + 1}</strong>.</p>
+                                    )}
+                                </div>
+
+                                {/* Contenedor de botones, separado del texto */}
+                                <div className="flex flex-wrap gap-3 mt-4">
+                                    <button
+                                        onClick={applySmartMapping}
+                                        className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-500 text-amber-950 hover:bg-amber-400 text-xs font-bold transition-colors"
+                                    >
+                                        <RefreshCw className="h-3.5 w-3.5" /> Actualizar a la sugerencia
+                                    </button>
+                                    <button
+                                        onClick={skipFormatWarning}
+                                        className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-amber-500/30 text-amber-400 hover:bg-amber-500/10 text-xs font-bold transition-colors"
+                                    >
+                                        Mantener configuración anterior
+                                    </button>
+                                </div>
+                            </AlertDescription>
+                        </Alert>
+                    )}
 
                     {/* ── Card: Mapeo de columnas ── */}
                     <div className="bg-card border border-border/60 rounded-2xl overflow-hidden shadow-sm">
@@ -1285,6 +1442,7 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                                         <th className="text-left p-3 text-[9px] font-black uppercase tracking-widest text-muted-foreground">SKU Prov.</th>
                                         <th className="text-left p-3 text-[9px] font-black uppercase tracking-widest text-muted-foreground max-w-[160px]">Descripción</th>
                                         <th className="text-right p-3 text-[9px] font-black uppercase tracking-widest text-muted-foreground">Costo</th>
+                                        <th className="text-center p-3 text-[9px] font-black uppercase tracking-widest text-indigo-400">IVA</th>
                                         <th className="text-right p-3 text-[9px] font-black uppercase tracking-widest text-primary"><span className="inline-flex items-center gap-1"><Image src="/logos/icon.png" alt="KH" width={14} height={14} className="rounded-sm" /> Venta</span></th>
                                         <th className="text-right p-3 text-[9px] font-black uppercase tracking-widest text-amber-400"><span className="inline-flex items-center gap-1"><Image src="/logos/meli.png" alt="ML" width={14} height={14} className="rounded-sm" /> MeLi</span></th>
                                         <th className="text-right p-3 pr-4 text-[9px] font-black uppercase tracking-widest text-blue-400"><span className="inline-flex items-center gap-1"><Image src="/logos/tiendanube.png" alt="TN" width={14} height={14} className="rounded-sm" /> TN</span></th>
@@ -1331,6 +1489,20 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                                                 {/* Costo */}
                                                 <td className="p-3 text-right align-top">
                                                     <span className="text-xs font-mono text-muted-foreground">${formatARS(prod.precio_original ?? 0)}</span>
+                                                </td>
+
+                                                {/* IVA individual */}
+                                                <td className="p-3 text-center align-top">
+                                                    <Select value={prod.iva_aplicado ?? '0'} onValueChange={(v) => updateProductIVA(realIndex, v)}>
+                                                        <SelectTrigger className="mx-auto h-8 w-[70px] text-xs font-bold border border-indigo-500/30 bg-transparent text-indigo-300 focus:ring-1 focus:ring-indigo-500/20 focus:border-indigo-500/50">
+                                                            <SelectValue />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            {IVA_OPTIONS.map(opt => (
+                                                                <SelectItem key={opt} value={opt}>{opt}%</SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
                                                 </td>
 
                                                 {/* Precio Venta — editable */}

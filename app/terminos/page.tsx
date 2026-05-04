@@ -43,6 +43,14 @@ export default function TerminosPage() {
                         <h3 className="text-foreground font-bold text-lg mb-2">4. Integraciones y Plataformas de Terceros</h3>
                         <p>KokiHawk utiliza las APIs provistas por Mercado Libre y Tienda Nube. KokiHawk no tiene control sobre la disponibilidad, latencia o cambios en las políticas de estas plataformas. El Cliente comprende que estas plataformas pueden aplicar límites de peticiones o suspender cuentas según sus propias normativas. KokiHawk no será responsable si la cuenta del Cliente es pausada o penalizada por dichas plataformas.</p>
                     </div>
+                    <div>
+                        <h3 className="text-foreground font-bold text-lg mb-2">5. Privacidad y Protección de Datos</h3>
+                        <p>KokiHawk se compromete a proteger la información confidencial del Cliente, incluyendo sus listas de proveedores y diccionarios de SKUs, en cumplimiento con la Ley de Protección de los Datos Personales N° 25.326 de la República Argentina. Los tokens de acceso a las plataformas de e-commerce se almacenan de forma segura y se utilizan única y exclusivamente para ejecutar las órdenes de actualización dictadas por el Cliente.</p>
+                    </div>
+                    <div>
+                        <h3 className="text-foreground font-bold text-lg mb-2">6. Disponibilidad del Servicio</h3>
+                        <p>KokiHawk realiza sus mayores esfuerzos para mantener la Plataforma operativa de forma ininterrumpida. Sin embargo, no garantiza que el servicio estará libre de errores o caídas temporales por mantenimiento de servidores, actualizaciones del sistema o causas de fuerza mayor.</p>
+                    </div>
                 </div>
             </div>
         </div>
