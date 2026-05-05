@@ -74,7 +74,7 @@ function getAnomalies(prod: any): AnomalyKind[] {
 
     if (costo > 0) {
         if (nuevo < costo) kinds.push('bajo_costo')
-        if (nuevo > costo * 2) kinds.push('alto_costo')
+        if (nuevo > costo * 10) kinds.push('alto_costo')
     }
     if (liveMeli && liveMeli > 0) {
         if ((liveMeli - pMeli) / liveMeli > DROP_THRESHOLD) kinds.push('shock_baja_meli')
@@ -250,7 +250,7 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
     const [redondeo, setRedondeo] = useState('0')
     const [iva, setIva] = useState('0')
     const [catalogMaps, setCatalogMaps] = useState<any>(null)
-    const [proveedores, setProveedores] = useState<{id: string, nombre: string}[]>([])
+    const [proveedores, setProveedores] = useState<{ id: string, nombre: string }[]>([])
     const [proveedorSel, setProveedorSel] = useState('')
     const [newProvName, setNewProvName] = useState('')
     const [showNewProv, setShowNewProv] = useState(false)
@@ -411,23 +411,23 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                         startRow: pm.fila_inicio ?? 0,
                     })
                     source = 'memory'
-if (pm.aumento_default) setAumento(pm.aumento_default)
-                     if (pm.redondeo_default) setRedondeo(pm.redondeo_default)
-                     if (pm.ajuste_meli_default) setAjusteMeli(pm.ajuste_meli_default)
-                     if (pm.ajuste_tn_default) setAjusteTN(pm.ajuste_tn_default)
-                     if (pm.iva_default) setIva(pm.iva_default)
-                     if (pm.diccionario_default) {
-                         try {
-                             const dd = typeof pm.diccionario_default === 'string'
-                                 ? JSON.parse(pm.diccionario_default)
-                                 : pm.diccionario_default
-                             if (dd?.id) {
-                                 const found = diccionarios.find(d => d.id === dd.id)
-                                 if (found) setDiccionarioSelId(dd.id)
-                             }
-                         } catch { /* json parse error, ignore */ }
-                     }
-                 } else if (sm?.col_sku != null && sm.col_sku !== -1) {
+                    if (pm.aumento_default) setAumento(pm.aumento_default)
+                    if (pm.redondeo_default) setRedondeo(pm.redondeo_default)
+                    if (pm.ajuste_meli_default) setAjusteMeli(pm.ajuste_meli_default)
+                    if (pm.ajuste_tn_default) setAjusteTN(pm.ajuste_tn_default)
+                    if (pm.iva_default) setIva(pm.iva_default)
+                    if (pm.diccionario_default) {
+                        try {
+                            const dd = typeof pm.diccionario_default === 'string'
+                                ? JSON.parse(pm.diccionario_default)
+                                : pm.diccionario_default
+                            if (dd?.id) {
+                                const found = diccionarios.find(d => d.id === dd.id)
+                                if (found) setDiccionarioSelId(dd.id)
+                            }
+                        } catch { /* json parse error, ignore */ }
+                    }
+                } else if (sm?.col_sku != null && sm.col_sku !== -1) {
                     setMapping({
                         sku: sm.col_sku,
                         desc: sm.col_desc ?? -1,
@@ -509,7 +509,28 @@ if (pm.aumento_default) setAumento(pm.aumento_default)
                         meli_refresh_token: data.nuevos_tokens_meli.refresh_token,
                     }))
                 }
-                setResults(data.productos)
+                // Normalizar precios iniciales de productos que comparten código de plataforma (toma el mayor)
+                const safeProducts = [...data.productos]
+                const maxPreciosMeli: Record<string, number> = {}
+                const maxPreciosTN: Record<string, number> = {}
+
+                safeProducts.forEach(p => {
+                    if (p.sku_meli) {
+                        const k = String(p.sku_meli).trim().toUpperCase()
+                        if (!maxPreciosMeli[k] || p.precio_meli > maxPreciosMeli[k]) maxPreciosMeli[k] = p.precio_meli
+                    }
+                    if (p.sku_tn) {
+                        const k = String(p.sku_tn).trim().toUpperCase()
+                        if (!maxPreciosTN[k] || p.precio_tn > maxPreciosTN[k]) maxPreciosTN[k] = p.precio_tn
+                    }
+                })
+
+                safeProducts.forEach(p => {
+                    if (p.sku_meli) p.precio_meli = maxPreciosMeli[String(p.sku_meli).trim().toUpperCase()]
+                    if (p.sku_tn) p.precio_tn = maxPreciosTN[String(p.sku_tn).trim().toUpperCase()]
+                })
+
+                setResults(safeProducts)
                 if (data._catalog_maps) setCatalogMaps(data._catalog_maps)
                 setStep(3)
             } else throw new Error(data.mensaje)
@@ -681,9 +702,9 @@ if (pm.aumento_default) setAumento(pm.aumento_default)
 
     // ── Edición por INDEX del array (no por SKU) ──
     const updateField = useCallback((index: number, field: string, value: any) => {
-        setResults(prev => prev.map((p, i) => {
-            if (i !== index) return p
-            const updated = { ...p, [field]: value }
+        setResults(prev => {
+            const newResults = [...prev]
+            const updated = { ...newResults[index], [field]: value }
 
             // Live SKU lookup: when user edits sku_meli or sku_tn, re-match against catalog
             if (field === 'sku_meli' && catalogMaps?.meli) {
@@ -694,6 +715,9 @@ if (pm.aumento_default) setAumento(pm.aumento_default)
                     if (!updated.plataformas?.includes('meli')) {
                         updated.plataformas = [...(updated.plataformas || []), 'meli']
                     }
+                    // HEREDAR PRECIO si ya hay otro producto con este mismo SKU en la tabla
+                    const peer = newResults.find((r, i) => i !== index && String(r.sku_meli || '').trim().toUpperCase() === key)
+                    if (peer && peer.precio_meli !== undefined) updated.precio_meli = peer.precio_meli
                 } else {
                     updated.meli_item_id = null
                     updated.precio_actual_meli = null
@@ -710,6 +734,9 @@ if (pm.aumento_default) setAumento(pm.aumento_default)
                     if (!updated.plataformas?.includes('tn')) {
                         updated.plataformas = [...(updated.plataformas || []), 'tn']
                     }
+                    // HEREDAR PRECIO si ya hay otro producto con este mismo SKU en la tabla
+                    const peer = newResults.find((r, i) => i !== index && String(r.sku_tn || '').trim().toUpperCase() === key)
+                    if (peer && peer.precio_tn !== undefined) updated.precio_tn = peer.precio_tn
                 } else {
                     updated.tn_product_id = null
                     updated.tn_variant_id = null
@@ -717,13 +744,35 @@ if (pm.aumento_default) setAumento(pm.aumento_default)
                     updated.plataformas = (updated.plataformas || []).filter((x: string) => x !== 'tn')
                 }
             }
-            return updated
-        }))
+
+            newResults[index] = updated
+
+            // SINCRONIZAR PRECIOS A LOS GEMELOS (si cambiaste manualmente el precio de una plataforma)
+            if (field === 'precio_meli' && updated.sku_meli) {
+                const key = String(updated.sku_meli).trim().toUpperCase()
+                for (let i = 0; i < newResults.length; i++) {
+                    if (i !== index && String(newResults[i].sku_meli || '').trim().toUpperCase() === key) {
+                        newResults[i] = { ...newResults[i], precio_meli: value }
+                    }
+                }
+            }
+            if (field === 'precio_tn' && updated.sku_tn) {
+                const key = String(updated.sku_tn).trim().toUpperCase()
+                for (let i = 0; i < newResults.length; i++) {
+                    if (i !== index && String(newResults[i].sku_tn || '').trim().toUpperCase() === key) {
+                        newResults[i] = { ...newResults[i], precio_tn: value }
+                    }
+                }
+            }
+
+            return newResults
+        })
     }, [catalogMaps])
 
     const updateProductIVA = useCallback((index: number, newIva: string) => {
-        setResults(prev => prev.map((p, i) => {
-            if (i !== index) return p
+        setResults(prev => {
+            const newResults = [...prev]
+            const p = newResults[index]
             const costo = p.precio_original ?? 0
             const aumentoFloat = parseFloat(aumento || '0') / 100
             const ivaFloat = parseFloat(newIva || '0') / 100
@@ -738,14 +787,35 @@ if (pm.aumento_default) setAumento(pm.aumento_default)
             const precio_meli = aplicarRedondeo(precio_final * (1 + ajusteMeliFloat), redondeoInt)
             const precio_tn = aplicarRedondeo(precio_final * (1 + ajusteTNFloat), redondeoInt)
 
-            return {
+            const updated = {
                 ...p,
                 iva_aplicado: newIva,
                 precio_final,
                 precio_meli,
                 precio_tn,
             }
-        }))
+            newResults[index] = updated
+
+            // SINCRONIZAR PRECIOS A LOS GEMELOS
+            if (updated.sku_meli) {
+                const keyMeli = String(updated.sku_meli).trim().toUpperCase()
+                for (let i = 0; i < newResults.length; i++) {
+                    if (i !== index && String(newResults[i].sku_meli || '').trim().toUpperCase() === keyMeli) {
+                        newResults[i] = { ...newResults[i], precio_meli: updated.precio_meli }
+                    }
+                }
+            }
+            if (updated.sku_tn) {
+                const keyTN = String(updated.sku_tn).trim().toUpperCase()
+                for (let i = 0; i < newResults.length; i++) {
+                    if (i !== index && String(newResults[i].sku_tn || '').trim().toUpperCase() === keyTN) {
+                        newResults[i] = { ...newResults[i], precio_tn: updated.precio_tn }
+                    }
+                }
+            }
+
+            return newResults
+        })
     }, [aumento, redondeo, ajusteMeli, ajusteTN])
 
     // ── Lista filtrada, buscada y ordenada (todos los items, no paginada aún) ──
@@ -845,11 +915,17 @@ if (pm.aumento_default) setAumento(pm.aumento_default)
                             </div>
                         ) : (
                             <div className="flex gap-2">
-                                <select value={proveedorSel} onChange={(e) => setProveedorSel(e.target.value)}
-                                    className="h-10 flex-1 text-sm font-medium border border-border/60 rounded-lg px-3 outline-none bg-secondary/40 text-foreground focus:border-primary/50">
-                                    <option value="">Seleccionar proveedor...</option>
-                                    {proveedores.map(p => <option key={p.id} value={p.nombre}>{p.nombre}</option>)}
-                                </select>
+                                <Select value={proveedorSel || 'none'} onValueChange={(v) => setProveedorSel(v === 'none' ? '' : v)}>
+                                    <SelectTrigger className="h-10 flex-1 text-sm font-medium border border-border/60 rounded-lg bg-secondary/40 text-foreground focus:border-primary/50">
+                                        <SelectValue placeholder="Seleccionar proveedor..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="none">Seleccionar proveedor...</SelectItem>
+                                        {proveedores.map(p => (
+                                            <SelectItem key={p.id} value={p.nombre}>{p.nombre}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
                                 <button onClick={() => setShowNewProv(true)} title="Crear proveedor"
                                     className="h-10 w-10 flex-shrink-0 flex items-center justify-center rounded-lg border border-dashed border-border/60 text-muted-foreground hover:text-foreground hover:border-primary/40 hover:bg-primary/5 transition-colors text-lg font-medium">+</button>
                             </div>
@@ -935,13 +1011,13 @@ if (pm.aumento_default) setAumento(pm.aumento_default)
                             className={`group relative border-2 border-dashed rounded-2xl bg-card transition-all duration-200 cursor-pointer overflow-hidden ${isDragging
                                 ? 'border-primary bg-primary/5 scale-[1.02] shadow-lg shadow-primary/10'
                                 : 'border-border/60 hover:border-primary/50 hover:bg-primary/3'
-                            }`}>
+                                }`}>
                             <div className="absolute inset-0 opacity-[0.02] pointer-events-none" style={{ backgroundImage: `repeating-linear-gradient(0deg, transparent, transparent 24px, currentColor 24px, currentColor 25px), repeating-linear-gradient(90deg, transparent, transparent 24px, currentColor 24px, currentColor 25px)` }} />
                             <div className="relative p-12 md:p-16 flex flex-col items-center gap-5 text-center">
                                 <div className={`w-16 h-16 rounded-2xl border flex items-center justify-center transition-all duration-200 ${isDragging
                                     ? 'bg-primary/15 border-primary/30 scale-110'
                                     : 'bg-primary/8 border-primary/15 group-hover:bg-primary/12 group-hover:scale-105'
-                                }`}>
+                                    }`}>
                                     <Upload className={`h-7 w-7 text-primary transition-transform ${isDragging ? 'animate-bounce' : ''}`} />
                                 </div>
                                 <div className="space-y-1">
@@ -1009,10 +1085,14 @@ if (pm.aumento_default) setAumento(pm.aumento_default)
                         <div className="flex items-center gap-3 bg-secondary/30 border border-border/60 rounded-xl px-4 py-2.5">
                             <FileSpreadsheet className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                             <span className="text-xs font-semibold text-muted-foreground">Hoja:</span>
-                            <select value={selectedSheet} onChange={e => handleSheetChange(e.target.value)}
-                                className="text-xs font-semibold bg-background border border-border/60 rounded-lg px-3 py-1.5 text-foreground">
-                                {excelSheets.map(s => <option key={s} value={s}>{s}</option>)}
-                            </select>
+                            <Select value={selectedSheet || undefined} onValueChange={handleSheetChange}>
+                                <SelectTrigger className="w-[180px] h-8 text-xs font-semibold bg-background border border-border/60 rounded-lg text-foreground">
+                                    <SelectValue placeholder="Seleccionar hoja..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {excelSheets.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
                             <span className="text-[10px] text-muted-foreground/50">
                                 {excelSheets.length} hojas detectadas
                             </span>
@@ -1037,11 +1117,17 @@ if (pm.aumento_default) setAumento(pm.aumento_default)
                                         </div>
                                     ) : (
                                         <div className="flex gap-1 mt-1">
-                                            <select value={proveedorSel} onChange={(e) => setProveedorSel(e.target.value)}
-                                                className="h-9 w-full text-sm font-medium border border-border/60 rounded-lg px-3 outline-none bg-secondary/40 text-foreground focus:border-primary/50">
-                                                <option value="">Seleccionar...</option>
-                                                {proveedores.map(p => <option key={p.id} value={p.nombre}>{p.nombre}</option>)}
-                                            </select>
+                                            <Select value={proveedorSel || 'none'} onValueChange={(v) => setProveedorSel(v === 'none' ? '' : v)}>
+                                                <SelectTrigger className="h-9 w-full text-sm font-medium border border-border/60 rounded-lg bg-secondary/40 text-foreground focus:border-primary/50">
+                                                    <SelectValue placeholder="Seleccionar proveedor..." />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="none">Seleccionar...</SelectItem>
+                                                    {proveedores.map(p => (
+                                                        <SelectItem key={p.id} value={p.nombre}>{p.nombre}</SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
                                             <button onClick={() => setShowNewProv(true)} title="Crear proveedor"
                                                 className="h-9 w-9 flex-shrink-0 flex items-center justify-center rounded-lg border border-dashed border-border/60 text-muted-foreground hover:text-foreground hover:border-primary/40 hover:bg-primary/5 transition-colors text-lg font-medium">+</button>
                                         </div>
@@ -1050,23 +1136,33 @@ if (pm.aumento_default) setAumento(pm.aumento_default)
                                 {plantillas.length > 0 && (
                                     <div>
                                         <Label className="text-[11px] font-semibold">Plantilla guardada</Label>
-                                        <select onChange={(e) => cargarPlantilla(e.target.value)}
-                                            className="mt-1 h-9 w-full text-sm font-medium border border-border/60 rounded-lg px-3 outline-none bg-secondary/40 text-foreground focus:border-primary/50">
-                                            <option value="">Seleccionar...</option>
-                                            {plantillas.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-                                        </select>
+                                        <Select onValueChange={(v) => { if (v !== 'none') cargarPlantilla(v) }}>
+                                            <SelectTrigger className="mt-1 h-9 w-full text-sm font-medium border border-border/60 rounded-lg bg-secondary/40 text-foreground focus:border-primary/50">
+                                                <SelectValue placeholder="Seleccionar..." />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="none">Seleccionar...</SelectItem>
+                                                {plantillas.map(p => (
+                                                    <SelectItem key={p.id} value={p.id}>{p.nombre}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
                                     </div>
                                 )}
                                 {diccionarios.length > 0 && (
                                     <div>
                                         <Label className="text-[11px] font-semibold">Diccionario SKUs</Label>
-                                        <select value={diccionarioSelId} onChange={e => setDiccionarioSelId(e.target.value)}
-                                            className="mt-1 h-9 w-full text-sm font-medium border border-border/60 rounded-lg px-3 outline-none bg-secondary/40 text-foreground focus:border-primary/50">
-                                            <option value="">Sin diccionario</option>
-                                            {diccionarios.map(d => (
-                                                <option key={d.id} value={d.id}>{d.nombre_proveedor}</option>
-                                            ))}
-                                        </select>
+                                        <Select value={diccionarioSelId || 'none'} onValueChange={(v) => setDiccionarioSelId(v === 'none' ? '' : v)}>
+                                            <SelectTrigger className="mt-1 h-9 w-full text-sm font-medium border border-border/60 rounded-lg bg-secondary/40 text-foreground focus:border-primary/50">
+                                                <SelectValue placeholder="Sin diccionario" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="none">Sin diccionario</SelectItem>
+                                                {diccionarios.map(d => (
+                                                    <SelectItem key={d.id} value={d.id}>{d.nombre_proveedor}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
                                     </div>
                                 )}
                             </div>
@@ -1086,16 +1182,20 @@ if (pm.aumento_default) setAumento(pm.aumento_default)
                                 </div>
                                 <div>
                                     <Label className="text-[11px] font-semibold">Redondeo</Label>
-                                    <select value={redondeo} onChange={(e) => setRedondeo(e.target.value)}
-                                        className={`mt-1 h-9 w-full text-sm font-medium border border-border/60 rounded-lg px-3 outline-none bg-secondary/40 text-foreground focus:border-primary/50 ${autoDetectSource === 'memory' && providerMemory?.redondeo_default ? 'ring-1 ring-emerald-500/30 border-emerald-500/40' : ''}`}>
-                                        <option value="0">Sin redondeo</option>
-                                        <option value="10">A la decena ($10)</option>
-                                        <option value="50">A los $50</option>
-                                        <option value="100">A la centena ($100)</option>
-                                        <option value="1000">Al millar ($1000)</option>
-                                    </select>
+                                    <Select value={redondeo || '0'} onValueChange={setRedondeo}>
+                                        <SelectTrigger className={`mt-1 h-9 w-full text-sm font-medium border border-border/60 rounded-lg bg-secondary/40 text-foreground focus:border-primary/50 ${autoDetectSource === 'memory' && providerMemory?.redondeo_default ? 'ring-1 ring-emerald-500/30 border-emerald-500/40' : ''}`}>
+                                            <SelectValue placeholder="Sin redondeo" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="0">Sin redondeo</SelectItem>
+                                            <SelectItem value="10">A la decena ($10)</SelectItem>
+                                            <SelectItem value="50">A los $50</SelectItem>
+                                            <SelectItem value="100">A la centena ($100)</SelectItem>
+                                            <SelectItem value="1000">Al millar ($1000)</SelectItem>
+                                        </SelectContent>
+                                    </Select>
                                 </div>
-                                
+
                                 <div>
                                     <Label className="text-[11px] font-semibold">Ajuste MeLi %</Label>
                                     <Input type="number" value={ajusteMeli} onChange={(e) => setAjusteMeli(e.target.value)} placeholder="0"
@@ -1126,11 +1226,11 @@ if (pm.aumento_default) setAumento(pm.aumento_default)
                     {/* ── Alerta de cambio de formato ── */}
                     {showFormatAlert && providerMemory && smartMapping && (
                         <Alert className="border-amber-500/40 bg-amber-500/5 p-4">
-                            
+
                             <AlertTitle className="text-amber-500 font-black text-sm flex items-center gap-2">
                                 ⚠️ Parece que la lista de este proveedor cambió su estructura.
                             </AlertTitle>
-                            
+
                             <AlertDescription className="text-amber-200/90 text-xs mt-2">
                                 <div className="space-y-2 leading-relaxed">
                                     {providerMemory.col_sku !== smartMapping.col_sku && providerMemory.col_sku != null && smartMapping.col_sku != null && (
@@ -1191,7 +1291,7 @@ if (pm.aumento_default) setAumento(pm.aumento_default)
                                 <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md border ${autoDetectSource === 'memory'
                                     ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
                                     : 'bg-violet-500/10 border-violet-500/30 text-violet-400'
-                                }`}>
+                                    }`}>
                                     {autoDetectSource === 'memory' ? '📦 Memoria proveedor' : '🤖 Mapeo inteligente'}
                                 </span>
                             )}
@@ -1554,7 +1654,7 @@ if (pm.aumento_default) setAumento(pm.aumento_default)
                             onPrev={() => setCurrentPage(p => Math.max(1, p - 1))}
                             onNext={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                         />
-        </div>
+                    </div>
 
                 </div>
             )}
