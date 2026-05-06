@@ -170,7 +170,7 @@ export function HeroSection() {
                                 className="flex items-center gap-2.5 bg-card border border-border/60 rounded-xl px-5 py-3 shadow-sm hover:shadow-md hover:border-primary/20 transition-all duration-300"
                             >
                                 <div className="w-7 h-7 rounded-lg overflow-hidden bg-white flex items-center justify-center border border-border/20">
-                                    <Image src="/logos/meli.png" alt="Mercado Libre" width={28} height={28} style={{ width: 'auto', height: 'auto' }} className="object-contain" />
+                                    <Image src="/logos/meli.png" alt="Mercado Libre" width={28} height={28} className="object-contain w-5 h-5" />
                                 </div>
                                 <span className="text-sm font-bold text-foreground">Mercado Libre</span>
                             </motion.div>
@@ -180,7 +180,17 @@ export function HeroSection() {
                                 className="flex items-center gap-2.5 bg-card border border-border/60 rounded-xl px-5 py-3 shadow-sm hover:shadow-md hover:border-primary/20 transition-all duration-300"
                             >
                                 <div className="w-7 h-7 rounded-lg overflow-hidden bg-white flex items-center justify-center border border-border/20">
-                                    <Image src="/logos/tiendanube.png" alt="Tienda Nube" width={28} height={28} style={{ width: 'auto', height: 'auto' }} className="object-contain" />
+                                    <Image src="/logos/tiendanube.png" alt="Tienda Nube" width={28} height={28} className="object-contain w-5 h-5" />
+                                </div>
+                                <span className="text-sm font-bold text-foreground">Mercado Libre</span>
+                            </motion.div>
+                            <div className="text-muted-foreground/30 font-bold text-lg">+</div>
+                            <motion.div
+                                whileHover={{ scale: 1.05, y: -2 }}
+                                className="flex items-center gap-2.5 bg-card border border-border/60 rounded-xl px-5 py-3 shadow-sm hover:shadow-md hover:border-primary/20 transition-all duration-300"
+                            >
+                                <div className="w-7 h-7 rounded-lg overflow-hidden bg-white flex items-center justify-center border border-border/20">
+                                    <Image src="/logos/tiendanube.png" alt="Tienda Nube" width={28} height={28} className="object-contain w-5 h-5" />
                                 </div>
                                 <span className="text-sm font-bold text-foreground">Tienda Nube</span>
                             </motion.div>

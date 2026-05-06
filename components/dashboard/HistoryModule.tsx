@@ -120,8 +120,7 @@ function PlatformBadge({ plataforma }: { plataforma: 'meli' | 'tn' }) {
                     src={isMeli ? '/logos/meli.png' : '/logos/tiendanube.png'}
                     alt={isMeli ? 'MeLi' : 'TN'}
                     width={16} height={16}
-                    style={{ width: 'auto', height: 'auto' }}
-                    className="object-contain"
+                    className="object-contain w-3.5 h-3.5"
                 />
             </div>
             <span className={`text-[10px] font-black uppercase tracking-wide ${isMeli ? 'text-amber-600 dark:text-amber-500' : 'text-blue-600 dark:text-blue-500'}`}>

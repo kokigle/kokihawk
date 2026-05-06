@@ -23,7 +23,7 @@ function ConnPill({ logo, name, connected }: { logo: string; name: string; conne
     return (
         <div className={`flex items-center gap-2 px-3 py-2 rounded-xl border transition-all ${connected ? 'bg-emerald-500/8 border-emerald-500/20' : 'bg-secondary/40 border-border/50'}`}>
             <div className="w-5 h-5 rounded-md overflow-hidden bg-white flex items-center justify-center flex-shrink-0 border border-border/20">
-                <Image src={logo} alt={name} width={20} height={20} style={{ width: 'auto', height: 'auto' }} className="object-contain" />
+                <Image src={logo} alt={name} width={20} height={20} className="object-contain w-3.5 h-3.5" />
             </div>
             <span className="text-xs font-bold text-foreground hidden sm:inline">{name}</span>
             <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${connected ? 'bg-emerald-500 shadow-sm shadow-emerald-500/60' : 'bg-muted-foreground/30'}`} />

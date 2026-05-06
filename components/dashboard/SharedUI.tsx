@@ -92,7 +92,7 @@ export function PlatformBadges({ plataformas }: { plataformas?: string[] }) {
             {plataformas.includes('meli') && (
                 <div className="flex items-center gap-1 bg-amber-500/10 border border-amber-500/25 rounded-md px-1.5 py-0.5">
                     <div className="w-3 h-3 rounded-sm overflow-hidden bg-white flex items-center justify-center flex-shrink-0">
-                        <Image src="/logos/meli.png" alt="MeLi" width={12} height={12} style={{ width: 'auto', height: 'auto' }} className="object-contain" />
+                        <Image src="/logos/meli.png" alt="MeLi" width={12} height={12} className="object-contain w-3 h-3" />
                     </div>
                     <span className="text-[9px] font-black uppercase tracking-wide text-amber-500">ML</span>
                 </div>
@@ -100,7 +100,7 @@ export function PlatformBadges({ plataformas }: { plataformas?: string[] }) {
             {plataformas.includes('tn') && (
                 <div className="flex items-center gap-1 bg-blue-500/10 border border-blue-500/25 rounded-md px-1.5 py-0.5">
                     <div className="w-3 h-3 rounded-sm overflow-hidden bg-white flex items-center justify-center flex-shrink-0">
-                        <Image src="/logos/tiendanube.png" alt="TN" width={12} height={12} style={{ width: 'auto', height: 'auto' }} className="object-contain" />
+                        <Image src="/logos/tiendanube.png" alt="TN" width={12} height={12} className="object-contain w-3 h-3" />
                     </div>
                     <span className="text-[9px] font-black uppercase tracking-wide text-blue-500">TN</span>
                 </div>
@@ -122,7 +122,7 @@ export function IntegrationCard({ logo, name, connected, onConnect }: {
             }`}>
             <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl overflow-hidden bg-white shadow-sm border border-border/20 flex items-center justify-center flex-shrink-0">
-                    <Image src={logo} alt={name} width={30} height={30} className="object-contain" />
+                    <Image src={logo} alt={name} width={30} height={30} className="object-contain w-6 h-6" />
                 </div>
                 <div>
                     <p className="text-sm font-bold text-foreground">{name}</p>

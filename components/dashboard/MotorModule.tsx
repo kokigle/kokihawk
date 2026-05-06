@@ -1468,7 +1468,7 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                                         : 'bg-secondary/50 text-muted-foreground/40 cursor-not-allowed border border-border/40'
                                         }`}
                                 >
-                                    {loading ? <Loader2 className="animate-spin h-4 w-4" /> : <Image src="/logos/meli.png" width={16} height={16} style={{ width: 'auto', height: 'auto' }} alt="meli" className="rounded-sm" />}
+                                    {loading ? <Loader2 className="animate-spin h-4 w-4" /> : <Image src="/logos/meli.png" width={16} height={16} alt="meli" className="rounded-sm w-4 h-4" />}
                                     {integraciones?.meli_access_token ? 'Actualizar MeLi' : 'MeLi sin conectar'}
                                 </button>
                                 <button
@@ -1486,7 +1486,7 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                                         : 'bg-secondary/50 text-muted-foreground/40 cursor-not-allowed border border-border/40'
                                         }`}
                                 >
-                                    {loading ? <Loader2 className="animate-spin h-4 w-4" /> : <Image src="/logos/tiendanube.png" width={16} height={16} style={{ width: 'auto', height: 'auto' }} alt="tn" className="rounded-sm" />}
+                                    {loading ? <Loader2 className="animate-spin h-4 w-4" /> : <Image src="/logos/tiendanube.png" width={16} height={16} alt="tn" className="rounded-sm w-4 h-4" />}
                                     {integraciones?.tiendanube_access_token ? 'Actualizar TN' : 'TN sin conectar'}
                                 </button>
                             </div>
@@ -1544,8 +1544,8 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                                         <th className="text-right p-3 text-[9px] font-black uppercase tracking-widest text-muted-foreground">Costo</th>
                                         <th className="text-center p-3 text-[9px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400">IVA</th>
                                         <th className="text-right p-3 text-[9px] font-black uppercase tracking-widest text-primary"><span className="inline-flex items-center gap-1"><Image src="/logos/icon.png" alt="KH" width={14} height={14} className="rounded-sm" /> Venta</span></th>
-                                        <th className="text-right p-3 text-[9px] font-black uppercase tracking-widest text-amber-600 dark:text-amber-400"><span className="inline-flex items-center gap-1"><Image src="/logos/meli.png" alt="ML" width={14} height={14} style={{ width: 'auto', height: 'auto' }} className="rounded-sm" /> MeLi</span></th>
-                                        <th className="text-right p-3 pr-4 text-[9px] font-black uppercase tracking-widest text-blue-600 dark:text-blue-400"><span className="inline-flex items-center gap-1"><Image src="/logos/tiendanube.png" alt="TN" width={14} height={14} style={{ width: 'auto', height: 'auto' }} className="rounded-sm" /> TN</span></th>
+                                        <th className="text-right p-3 text-[9px] font-black uppercase tracking-widest text-amber-600 dark:text-amber-400"><span className="inline-flex items-center gap-1"><Image src="/logos/meli.png" alt="ML" width={14} height={14} className="rounded-sm w-3.5 h-3.5" /> MeLi</span></th>
+                                        <th className="text-right p-3 pr-4 text-[9px] font-black uppercase tracking-widest text-blue-600 dark:text-blue-400"><span className="inline-flex items-center gap-1"><Image src="/logos/tiendanube.png" alt="TN" width={14} height={14} className="rounded-sm w-3.5 h-3.5" /> TN</span></th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-border/20">

@@ -30,7 +30,7 @@ function JobRow({ job, onRemove }: { job: JobStatus; onRemove: () => void }) {
         <div className="p-3 space-y-2">
             <div className="flex items-center gap-2">
                 <div className="w-5 h-5 rounded-sm overflow-hidden bg-white border border-border/20 flex items-center justify-center flex-shrink-0">
-                    <Image src={logo} alt={name} width={14} height={14} style={{ width: 'auto', height: 'auto' }} className="object-contain" />
+                    <Image src={logo} alt={name} width={14} height={14} className="object-contain w-3.5 h-3.5" />
                 </div>
                 <span className="text-xs font-bold text-foreground flex-1">{name}</span>
 
