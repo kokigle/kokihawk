@@ -8,42 +8,26 @@ import { Button } from '@/components/ui/button'
 import Image from 'next/image'
 import {
     LogOut, FileSpreadsheet, Store, Package, History,
-    ChevronRight, TrendingUp, RefreshCw, Zap, ArrowRight, Clock
+    ChevronRight, TrendingUp, Zap, ArrowRight, Clock
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { ThemeToggle } from '@/components/theme-toggle'
 import { ModuleCard, HistorialMockup } from '@/components/dashboard/SharedUI'
 import MotorModule from '@/components/dashboard/MotorModule'
 import CatalogoModule from '@/components/dashboard/CatalogoModule'
 import IntegracionesModule from '@/components/dashboard/IntegracionesModule'
 import HistoryModule from '@/components/dashboard/HistoryModule'
+import { TutorialVideos } from '@/components/dashboard/TutorialVideos'
 
-/* Connection status pill */
 function ConnPill({ logo, name, connected }: { logo: string; name: string; connected: boolean }) {
     return (
         <div className={`flex items-center gap-2 px-3 py-2 rounded-xl border transition-all ${connected ? 'bg-emerald-500/8 border-emerald-500/20' : 'bg-secondary/40 border-border/50'}`}>
             <div className="w-5 h-5 rounded-md overflow-hidden bg-white flex items-center justify-center flex-shrink-0 border border-border/20">
-                <Image src={logo} alt={name} width={14} height={14} className="object-contain" />
+                <Image src={logo} alt={name} width={20} height={20} style={{ width: 'auto', height: 'auto' }} className="object-contain" />
             </div>
             <span className="text-xs font-bold text-foreground hidden sm:inline">{name}</span>
             <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${connected ? 'bg-emerald-500 shadow-sm shadow-emerald-500/60' : 'bg-muted-foreground/30'}`} />
         </div>
-    )
-}
-
-/* Quick-action card */
-function QuickAction({ icon, label, sublabel, onClick, accent }: { icon: React.ReactNode; label: string; sublabel: string; onClick: () => void; accent: string }) {
-    return (
-        <button onClick={onClick}
-            className="group flex items-center gap-3 w-full p-4 rounded-2xl border border-border/50 bg-card hover:border-primary/30 hover:bg-primary/3 transition-all duration-200 text-left">
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${accent}`}>
-                {icon}
-            </div>
-            <div className="flex-1 min-w-0">
-                <p className="text-sm font-black text-foreground">{label}</p>
-                <p className="text-[11px] text-muted-foreground truncate">{sublabel}</p>
-            </div>
-            <ArrowRight className="h-4 w-4 text-muted-foreground/30 group-hover:text-primary group-hover:translate-x-0.5 transition-all flex-shrink-0" />
-        </button>
     )
 }
 
@@ -78,12 +62,11 @@ export default function DashboardPage() {
             const params = new URLSearchParams(window.location.search)
             let needsRefetch = false
 
-            // OAuth tokens ahora vienen en cookies HttpOnly — consumirlas via API
             const oauthParam = params.get('oauth')
             if (oauthParam) {
                 try {
                     const res = await fetch('https://api.kokihawk.com.ar/consume-oauth-cookies', {
-                        credentials: 'include',  // enviar cookies cross-origin
+                        credentials: 'include',
                     })
                     const data = await res.json()
                     if (data.status === 'ok') {
@@ -120,7 +103,6 @@ export default function DashboardPage() {
         init()
     }, [router, supabase])
 
-    // Fetch last successful sync date
     useEffect(() => {
         if (!user) return
         supabase
@@ -153,7 +135,7 @@ export default function DashboardPage() {
             {/* ── Navbar ── */}
             <nav className="bg-card/70 backdrop-blur-xl border-b border-border/60 px-4 md:px-8 flex justify-between items-center sticky top-0 z-50 h-16 shadow-sm shadow-black/10">
                 <div className="flex items-center gap-3">
-                    <Image src="/logos/logo.png" alt="KokiHawk" width={160} height={44} className="object-contain h-9 w-auto" />
+                    <Image src="/logos/logo.png" alt="KokiHawk" width={180} height={48} className="object-contain h-11 w-auto" />
                     {activeModule !== 'hub' && (
                         <>
                             <div className="h-4 w-px bg-border hidden sm:block" />
@@ -166,6 +148,7 @@ export default function DashboardPage() {
                     )}
                 </div>
                 <div className="flex items-center gap-2">
+                    <ThemeToggle />
                     <Button
                         variant="ghost" size="sm"
                         onClick={() => supabase.auth.signOut().then(() => router.push('/login'))}
@@ -186,19 +169,15 @@ export default function DashboardPage() {
 
                         {/* ── Hero welcome banner ── */}
                         <div className="relative overflow-hidden rounded-2xl border border-border/50 bg-card">
-                            {/* BG decoration */}
                             <div className="absolute inset-0 pointer-events-none overflow-hidden">
                                 <div className="absolute -top-20 -right-20 w-80 h-80 bg-primary/6 rounded-full blur-3xl" />
                                 <div className="absolute -bottom-10 left-1/4 w-56 h-56 bg-primary/4 rounded-full blur-2xl" />
-                                {/* Grid */}
                                 <div className="absolute inset-0 opacity-[0.02]" style={{ backgroundImage: `repeating-linear-gradient(0deg, transparent, transparent 32px, currentColor 32px, currentColor 33px), repeating-linear-gradient(90deg, transparent, transparent 32px, currentColor 32px, currentColor 33px)` }} />
                             </div>
 
                             <div className="relative z-10 p-6 md:p-8">
                                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                                    {/* Left: greeting */}
                                     <div className="flex items-center gap-4">
-                                        {/* Avatar */}
                                         <div className="w-14 h-14 rounded-2xl bg-primary/15 border border-primary/25 flex items-center justify-center flex-shrink-0 shadow-lg shadow-primary/10">
                                             <span className="text-2xl font-black text-primary">{userInitial}</span>
                                         </div>
@@ -212,7 +191,6 @@ export default function DashboardPage() {
                                         </div>
                                     </div>
 
-                                    {/* Right: connection status */}
                                     <div className="flex flex-col gap-2">
                                         <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Estado de conexiones</p>
                                         <div className="flex flex-wrap gap-2">
@@ -241,7 +219,7 @@ export default function DashboardPage() {
                             </div>
                         </div>
 
-                        {/* ── 2-column layout: modules + sidebar ── */}
+                        {/* ── 2-column layout ── */}
                         <div className="grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-6">
 
                             {/* LEFT: modules */}
@@ -259,21 +237,21 @@ export default function DashboardPage() {
                                         onClick={() => { setActiveModule('motor'); setStep(1) }}
                                     />
                                     <ModuleCard
-                                        icon={<Package className="h-5 w-5 text-violet-400" />}
+                                        icon={<Package className="h-5 w-5 text-violet-600 dark:text-violet-400" />}
                                         title="Catálogo de Mostrador"
                                         description="Buscá cualquier producto por SKU o escaneá su código de barras al instante."
                                         accentColor="bg-violet-500/10"
                                         onClick={() => setActiveModule('catalogo')}
                                     />
                                     <ModuleCard
-                                        icon={<Store className="h-5 w-5 text-blue-400" />}
+                                        icon={<Store className="h-5 w-5 text-blue-600 dark:text-blue-400" />}
                                         title="Integraciones"
                                         description="Vinculá MeLi, Tienda Nube y cargá diccionarios de SKU para traducción automática."
                                         accentColor="bg-blue-500/10"
                                         onClick={() => setActiveModule('integraciones')}
                                     />
                                     <ModuleCard
-                                        icon={<History className="h-5 w-5 text-emerald-400" />}
+                                        icon={<History className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />}
                                         title="Historial y Logs"
                                         description="Registro completo de sincronizaciones, errores y auditoría de cambios."
                                         accentColor="bg-emerald-500/10"
@@ -284,59 +262,7 @@ export default function DashboardPage() {
 
                             {/* RIGHT: sidebar */}
                             <div className="space-y-5">
-                                {/* Quick actions */}
-                                <div>
-                                    <div className="flex items-center gap-3 mb-3">
-                                        <h2 className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Acciones rápidas</h2>
-                                        <div className="flex-1 h-px bg-border/40" />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <QuickAction
-                                            icon={<FileSpreadsheet className="h-4.5 w-4.5 text-primary" />}
-                                            label="Nueva lista de precios"
-                                            sublabel="Subir y calcular precios"
-                                            onClick={() => { setActiveModule('motor'); setStep(1) }}
-                                            accent="bg-primary/10"
-                                        />
-                                        <QuickAction
-                                            icon={<Package className="h-4.5 w-4.5 text-violet-400" />}
-                                            label="Buscar en catálogo"
-                                            sublabel="Consultar precio al instante"
-                                            onClick={() => setActiveModule('catalogo')}
-                                            accent="bg-violet-500/10"
-                                        />
-                                        <QuickAction
-                                            icon={<RefreshCw className="h-4.5 w-4.5 text-blue-400" />}
-                                            label="Gestionar conexiones"
-                                            sublabel="MeLi, Tienda Nube y SKUs"
-                                            onClick={() => setActiveModule('integraciones')}
-                                            accent="bg-blue-500/10"
-                                        />
-                                    </div>
-                                </div>
-
-                                {/* Info / tips card */}
-                                <div className="bg-card border border-border/50 rounded-2xl p-5 space-y-4">
-                                    <div className="flex items-center gap-2.5">
-                                        <div className="w-8 h-8 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center flex-shrink-0">
-                                            <Zap className="h-4 w-4 text-primary" />
-                                        </div>
-                                        <p className="text-sm font-black text-foreground">Flujo recomendado</p>
-                                    </div>
-                                    <ol className="space-y-3">
-                                        {[
-                                            { n: '1', text: 'Conectá tus plataformas en Integraciones' },
-                                            { n: '2', text: 'Subí tu lista Excel en el Motor de Listas' },
-                                            { n: '3', text: 'Revisá los precios y sincronizá con un clic' },
-                                            { n: '4', text: 'Consultá el Catálogo de Mostrador desde el local' },
-                                        ].map(step => (
-                                            <li key={step.n} className="flex items-start gap-3">
-                                                <span className="w-5 h-5 rounded-full bg-primary/10 border border-primary/20 text-primary text-[10px] font-black flex items-center justify-center flex-shrink-0 mt-0.5">{step.n}</span>
-                                                <p className="text-xs text-muted-foreground leading-relaxed">{step.text}</p>
-                                            </li>
-                                        ))}
-                                    </ol>
-                                </div>
+                                <TutorialVideos />
 
                                 {/* Brand footer card */}
                                 <div className="relative overflow-hidden bg-card border border-border/50 rounded-2xl p-5">
@@ -345,7 +271,7 @@ export default function DashboardPage() {
                                         <Image src="/logos/logo.png" alt="KokiHawk" width={100} height={28} className="object-contain h-7 w-auto opacity-70" />
                                     </div>
                                     <p className="relative text-[10px] text-muted-foreground/60 mt-3 leading-relaxed">
-                                        KokiHawk automatiza la actualización de precios en Mercado Libre y Tienda Nube. Desarrollado en Argentina 🇦🇷
+                                        KokiHawk automatiza la actualización de precios en Mercado Libre y Tienda Nube. Desarrollado en Argentina.
                                     </p>
                                 </div>
                             </div>

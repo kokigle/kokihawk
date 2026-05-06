@@ -4,19 +4,57 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  /* === KOKIHAWK — Rojo & Negro === */
-  /* Backgrounds: negro puro con tinte muy cálido */
+  /* === KOKIHAWK — Modo Claro (Default) === */
+  --background:    oklch(0.98 0.002 22);
+  --foreground:    oklch(0.15 0.005 22);
+
+  --card:          oklch(1.0 0 0);
+  --card-foreground: oklch(0.15 0.005 22);
+
+  --popover:       oklch(1.0 0 0);
+  --popover-foreground: oklch(0.15 0.005 22);
+
+  /* Primary: rojo KokiHawk — CTAs, links activos, acentos */
+  --primary:       oklch(0.54 0.22 22);
+  --primary-foreground: oklch(0.98 0.005 22);
+
+  --secondary:     oklch(0.94 0.005 22);
+  --secondary-foreground: oklch(0.15 0.005 22);
+
+  --muted:         oklch(0.94 0.005 22);
+  --muted-foreground: oklch(0.45 0.005 22);
+
+  --accent:        oklch(0.54 0.22 22);
+  --accent-foreground: oklch(0.98 0.005 22);
+
+  --destructive:   oklch(0.55 0.22 22);
+  --destructive-foreground: oklch(0.98 0 0);
+
+  --border:        oklch(0.88 0.005 22);
+  --input:         oklch(0.88 0.005 22);
+  --ring:          oklch(0.54 0.22 22);
+
+  --radius: 0.75rem;
+
+  /* Charts — optimizados para fondo claro */
+  --chart-1: oklch(0.54 0.22 22);
+  --chart-2: oklch(0.65 0.18 40);
+  --chart-3: oklch(0.50 0.15 10);
+  --chart-4: oklch(0.70 0.12 50);
+  --chart-5: oklch(0.60 0.20 30);
+}
+
+.dark {
+  /* === KOKIHAWK — Modo Oscuro (Diseño original) === */
   --background:    oklch(0.09 0.005 22);
   --foreground:    oklch(0.96 0.004 22);
 
-  /* Cards: ligeramente más claras que el fondo */
   --card:          oklch(0.13 0.005 22);
   --card-foreground: oklch(0.96 0.004 22);
 
   --popover:       oklch(0.13 0.005 22);
   --popover-foreground: oklch(0.96 0.004 22);
 
-  /* Primary: rojo profundo y sobrio — como el logo */
   --primary:       oklch(0.54 0.22 22);
   --primary-foreground: oklch(0.98 0.005 22);
 
@@ -35,8 +73,6 @@
   --border:        oklch(0.22 0.006 22);
   --input:         oklch(0.18 0.005 22);
   --ring:          oklch(0.54 0.22 22);
-
-  --radius: 0.75rem;
 
   /* Charts */
   --chart-1: oklch(0.54 0.22 22);
@@ -101,5 +137,12 @@ html {
 
 /* Clean section divider utility */
 .section-divider {
-  border-top: 1px solid oklch(0.22 0.006 22);
+  border-top: 1px solid var(--border);
+}
+
+/* Smooth theme transition */
+*, *::before, *::after {
+  transition-property: background-color, border-color, color;
+  transition-duration: 150ms;
+  transition-timing-function: ease;
 }

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import './globals.css'
+import { ThemeProvider } from '@/components/theme-provider'
 import { SyncJobsProvider } from '@/contexts/SyncJobsContext'
 import FloatingWidget from '@/components/dashboard/FloatingWidget'
 import { Toaster } from 'sonner'
@@ -17,11 +18,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="es" className={`${geist.variable} ${geistMono.variable}`} suppressHydrationWarning>
       <body className="font-sans antialiased bg-background text-foreground">
-        <SyncJobsProvider>
-          {children}
-          <FloatingWidget />
-          <Toaster position="top-right" richColors closeButton duration={4000} />
-        </SyncJobsProvider>
+        <ThemeProvider defaultTheme="light" attribute="class" enableSystem={false}>
+          <SyncJobsProvider>
+            {children}
+            <FloatingWidget />
+            <Toaster position="top-right" richColors closeButton duration={4000} />
+          </SyncJobsProvider>
+        </ThemeProvider>
       </body>
     </html>
   )

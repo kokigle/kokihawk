@@ -60,10 +60,10 @@ export function MappingButton({ label, color, active, onClick, autoDetected }: {
     const colorMap: Record<string, string> = {
         blue: active
             ? 'bg-blue-500 text-white border-blue-500 shadow-blue-500/30 shadow-md'
-            : 'border-border/60 text-muted-foreground hover:border-blue-400/60 hover:text-blue-400 hover:bg-blue-500/8',
+            : 'border-border/60 text-muted-foreground hover:border-blue-600 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-500/8',
         green: active
             ? 'bg-emerald-500 text-white border-emerald-500 shadow-emerald-500/30 shadow-md'
-            : 'border-border/60 text-muted-foreground hover:border-emerald-400/60 hover:text-emerald-400 hover:bg-emerald-500/8',
+            : 'border-border/60 text-muted-foreground hover:border-emerald-600 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-500/8',
         orange: active
             ? 'bg-primary text-primary-foreground border-primary shadow-primary/30 shadow-md'
             : 'border-border/60 text-muted-foreground hover:border-primary/60 hover:text-primary hover:bg-primary/8',
@@ -92,7 +92,7 @@ export function PlatformBadges({ plataformas }: { plataformas?: string[] }) {
             {plataformas.includes('meli') && (
                 <div className="flex items-center gap-1 bg-amber-500/10 border border-amber-500/25 rounded-md px-1.5 py-0.5">
                     <div className="w-3 h-3 rounded-sm overflow-hidden bg-white flex items-center justify-center flex-shrink-0">
-                        <Image src="/logos/meli.png" alt="MeLi" width={10} height={10} className="object-contain" />
+                        <Image src="/logos/meli.png" alt="MeLi" width={12} height={12} style={{ width: 'auto', height: 'auto' }} className="object-contain" />
                     </div>
                     <span className="text-[9px] font-black uppercase tracking-wide text-amber-500">ML</span>
                 </div>
@@ -100,7 +100,7 @@ export function PlatformBadges({ plataformas }: { plataformas?: string[] }) {
             {plataformas.includes('tn') && (
                 <div className="flex items-center gap-1 bg-blue-500/10 border border-blue-500/25 rounded-md px-1.5 py-0.5">
                     <div className="w-3 h-3 rounded-sm overflow-hidden bg-white flex items-center justify-center flex-shrink-0">
-                        <Image src="/logos/tiendanube.png" alt="TN" width={10} height={10} className="object-contain" />
+                        <Image src="/logos/tiendanube.png" alt="TN" width={12} height={12} style={{ width: 'auto', height: 'auto' }} className="object-contain" />
                     </div>
                     <span className="text-[9px] font-black uppercase tracking-wide text-blue-500">TN</span>
                 </div>

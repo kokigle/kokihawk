@@ -92,8 +92,8 @@ function StatusBadge({ estado, errores, noEncontrados }: {
     if (noEncontrados > 0) {
         return (
             <div className="flex items-center gap-1.5 bg-blue-500/10 border border-blue-500/25 rounded-lg px-2.5 py-1">
-                <AlertTriangle className="h-3 w-3 text-blue-400 flex-shrink-0" />
-                <span className="text-[10px] font-black uppercase tracking-wider text-blue-400">Parcial</span>
+                <AlertTriangle className="h-3 w-3 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+                <span className="text-[10px] font-black uppercase tracking-wider text-blue-600 dark:text-blue-400">Parcial</span>
             </div>
         )
     }
@@ -119,11 +119,12 @@ function PlatformBadge({ plataforma }: { plataforma: 'meli' | 'tn' }) {
                 <Image
                     src={isMeli ? '/logos/meli.png' : '/logos/tiendanube.png'}
                     alt={isMeli ? 'MeLi' : 'TN'}
-                    width={12} height={12}
+                    width={16} height={16}
+                    style={{ width: 'auto', height: 'auto' }}
                     className="object-contain"
                 />
             </div>
-            <span className={`text-[10px] font-black uppercase tracking-wide ${isMeli ? 'text-amber-500' : 'text-blue-500'}`}>
+            <span className={`text-[10px] font-black uppercase tracking-wide ${isMeli ? 'text-amber-600 dark:text-amber-500' : 'text-blue-600 dark:text-blue-500'}`}>
                 {isMeli ? 'MeLi' : 'TN'}
             </span>
         </div>
@@ -262,7 +263,7 @@ function RollbackButton({ record }: { record: HistorialRecord }) {
         <button
             onClick={handleRollback}
             disabled={loading}
-            className="mt-1 flex items-center gap-2 px-3 py-1.5 rounded-xl text-[11px] font-black border border-amber-500/30 bg-amber-500/8 text-amber-400 hover:bg-amber-500/15 hover:border-amber-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            className="mt-1 flex items-center gap-2 px-3 py-1.5 rounded-xl text-[11px] font-black border border-amber-500/30 bg-amber-500/8 text-amber-600 dark:text-amber-400 hover:bg-amber-500/15 hover:border-amber-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
         >
             {loading
                 ? <><Loader2 className="h-3 w-3 animate-spin" /> Deshaciendo...</>
@@ -455,7 +456,7 @@ export default function HistoryModule({ userId, setActiveModule }: Props) {
                 <div>
                     <div className="flex items-center gap-3 mb-1">
                         <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center flex-shrink-0">
-                            <History className="h-5 w-5 text-emerald-400" />
+                            <History className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
                         </div>
                         <div>
                             <h1 className="text-2xl font-black text-foreground tracking-tight">Historial</h1>

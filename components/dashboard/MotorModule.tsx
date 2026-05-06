@@ -937,7 +937,7 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                         {!proveedorSel && (
                             <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/25 rounded-xl px-4 py-2.5 mb-4">
                                 <AlertTriangle className="h-4 w-4 text-amber-500 flex-shrink-0" />
-                                <p className="text-xs font-semibold text-amber-400">Seleccioná un proveedor para habilitar la carga de archivos</p>
+                                <p className="text-xs font-semibold text-amber-600 dark:text-amber-400">Seleccioná un proveedor para habilitar la carga de archivos</p>
                             </div>
                         )}
                         <div className="text-center space-y-2 mb-4">
@@ -1171,7 +1171,7 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                         {/* Card: Ajustes */}
                         <div className="bg-card border border-border/60 rounded-2xl p-5 space-y-4 relative">
                             {autoDetectSource === 'memory' && (
-                                <span className="absolute top-3 right-3 text-[9px] font-black uppercase px-1.5 py-0.5 rounded-md border bg-emerald-500/10 border-emerald-500/30 text-emerald-400">📦 Pre-cargado</span>
+                                <span className="absolute top-3 right-3 text-[9px] font-black uppercase px-1.5 py-0.5 rounded-md border bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400">📦 Pre-cargado</span>
                             )}
                             <h3 className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Ajustes de precios</h3>
                             <div className="grid grid-cols-2 gap-4">
@@ -1231,19 +1231,19 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                                 ⚠️ Parece que la lista de este proveedor cambió su estructura.
                             </AlertTitle>
 
-                            <AlertDescription className="text-amber-200/90 text-xs mt-2">
+                            <AlertDescription className="text-amber-800 dark:text-amber-200/90 text-xs mt-2">
                                 <div className="space-y-2 leading-relaxed">
                                     {providerMemory.col_sku !== smartMapping.col_sku && providerMemory.col_sku != null && smartMapping.col_sku != null && (
-                                        <p>La columna de <strong className="text-amber-400">SKU/Código</strong> antes era la <strong className="text-amber-400">{providerMemory.col_sku + 1}</strong>, pero ahora detectamos que está en la <strong className="text-amber-400">{smartMapping.col_sku + 1}</strong>.</p>
+                                        <p>La columna de <strong className="text-amber-700 dark:text-amber-400">SKU/Código</strong> antes era la <strong className="text-amber-700 dark:text-amber-400">{providerMemory.col_sku + 1}</strong>, pero ahora detectamos que está en la <strong className="text-amber-700 dark:text-amber-400">{smartMapping.col_sku + 1}</strong>.</p>
                                     )}
                                     {providerMemory.col_desc !== smartMapping.col_desc && providerMemory.col_desc != null && smartMapping.col_desc != null && (
-                                        <p>La columna de <strong className="text-amber-400">Descripción</strong> antes era la <strong className="text-amber-400">{providerMemory.col_desc + 1}</strong>, pero ahora detectamos que está en la <strong className="text-amber-400">{smartMapping.col_desc + 1}</strong>.</p>
+                                        <p>La columna de <strong className="text-amber-700 dark:text-amber-400">Descripción</strong> antes era la <strong className="text-amber-700 dark:text-amber-400">{providerMemory.col_desc + 1}</strong>, pero ahora detectamos que está en la <strong className="text-amber-700 dark:text-amber-400">{smartMapping.col_desc + 1}</strong>.</p>
                                     )}
                                     {providerMemory.col_precio !== smartMapping.col_precio && providerMemory.col_precio != null && smartMapping.col_precio != null && (
-                                        <p>La columna de <strong className="text-amber-400">Precio</strong> antes era la <strong className="text-amber-400">{providerMemory.col_precio + 1}</strong>, pero ahora detectamos que los precios están en la <strong className="text-amber-400">{smartMapping.col_precio + 1}</strong>.</p>
+                                        <p>La columna de <strong className="text-amber-700 dark:text-amber-400">Precio</strong> antes era la <strong className="text-amber-700 dark:text-amber-400">{providerMemory.col_precio + 1}</strong>, pero ahora detectamos que los precios están en la <strong className="text-amber-700 dark:text-amber-400">{smartMapping.col_precio + 1}</strong>.</p>
                                     )}
                                     {providerMemory.fila_inicio !== smartMapping.fila_inicio && providerMemory.fila_inicio != null && smartMapping.fila_inicio != null && (
-                                        <p>La <strong className="text-amber-400">fila de inicio</strong> de datos antes era la <strong className="text-amber-400">{providerMemory.fila_inicio + 1}</strong>, pero ahora detectamos que los datos empiezan en la fila <strong className="text-amber-400">{smartMapping.fila_inicio + 1}</strong>.</p>
+                                        <p>La <strong className="text-amber-700 dark:text-amber-400">fila de inicio</strong> de datos antes era la <strong className="text-amber-700 dark:text-amber-400">{providerMemory.fila_inicio + 1}</strong>, pero ahora detectamos que los datos empiezan en la fila <strong className="text-amber-700 dark:text-amber-400">{smartMapping.fila_inicio + 1}</strong>.</p>
                                     )}
                                 </div>
 
@@ -1257,7 +1257,7 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                                     </button>
                                     <button
                                         onClick={skipFormatWarning}
-                                        className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-amber-500/30 text-amber-400 hover:bg-amber-500/10 text-xs font-bold transition-colors"
+                                        className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-amber-500/30 text-amber-700 dark:text-amber-400 hover:bg-amber-500/10 text-xs font-bold transition-colors"
                                     >
                                         Mantener configuración anterior
                                     </button>
@@ -1289,8 +1289,8 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                             {!canProcess && <p className="text-[10px] text-muted-foreground/40">Asigná cada columna usando los botones de abajo</p>}
                             {autoDetectSource && (
                                 <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md border ${autoDetectSource === 'memory'
-                                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
-                                    : 'bg-violet-500/10 border-violet-500/30 text-violet-400'
+                                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
+                                    : 'bg-violet-500/10 border-violet-500/30 text-violet-600 dark:text-violet-400'
                                     }`}>
                                     {autoDetectSource === 'memory' ? '📦 Memoria proveedor' : '🤖 Mapeo inteligente'}
                                 </span>
@@ -1331,7 +1331,7 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                                                 </div>
                                             </td>
                                             {fila.map((c: any, cIdx: number) => (
-                                                <td key={cIdx} className={`p-3 text-xs border-r border-border/10 font-medium truncate max-w-[180px] ${mapping.sku === cIdx ? 'text-blue-400' : mapping.desc === cIdx ? 'text-emerald-400' : mapping.precio === cIdx ? 'text-primary' : 'text-muted-foreground/50'}`}>
+                                                <td key={cIdx} className={`p-3 text-xs border-r border-border/10 font-medium truncate max-w-[180px] ${mapping.sku === cIdx ? 'text-blue-600 dark:text-blue-400' : mapping.desc === cIdx ? 'text-emerald-600 dark:text-emerald-400' : mapping.precio === cIdx ? 'text-primary' : 'text-muted-foreground/50'}`}>
                                                     {c}
                                                 </td>
                                             ))}
@@ -1416,7 +1416,7 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                                     desc: `Se guardarán solo los productos que tengan SKU MeLi o SKU TN asignado (${results.filter(p => p.sku_meli || p.sku_tn).length} productos). ¿Continuar?`,
                                     action: () => handleSaveCatalogo('linked'),
                                 })} disabled={loading || !results.length} variant="outline" size="sm"
-                                    className="border-violet-500/30 text-violet-400 hover:bg-violet-500/8 text-xs font-bold gap-1.5">
+                                    className="border-violet-500/30 text-violet-600 dark:text-violet-400 hover:bg-violet-500/8 text-xs font-bold gap-1.5">
                                     <DatabaseZap className="h-3.5 w-3.5" /> Solo Vinculados
                                 </Button>
                                 <Button onClick={() => setConfirmModal({
@@ -1424,7 +1424,7 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                                     desc: `Se guardarán los ${results.length} productos procesados en el catálogo (proveedor: ${proveedorSel || 'General'}). ¿Continuar?`,
                                     action: () => handleSaveCatalogo('all'),
                                 })} disabled={loading || !results.length} variant="outline" size="sm"
-                                    className="border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/8 text-xs font-bold gap-1.5">
+                                    className="border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/8 text-xs font-bold gap-1.5">
                                     <Save className="h-3.5 w-3.5" /> Guardar Todo
                                 </Button>
                                 {lastBatchId && (
@@ -1468,7 +1468,7 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                                         : 'bg-secondary/50 text-muted-foreground/40 cursor-not-allowed border border-border/40'
                                         }`}
                                 >
-                                    {loading ? <Loader2 className="animate-spin h-4 w-4" /> : <Image src="/logos/meli.png" width={16} height={16} alt="meli" className="rounded-sm" />}
+                                    {loading ? <Loader2 className="animate-spin h-4 w-4" /> : <Image src="/logos/meli.png" width={16} height={16} style={{ width: 'auto', height: 'auto' }} alt="meli" className="rounded-sm" />}
                                     {integraciones?.meli_access_token ? 'Actualizar MeLi' : 'MeLi sin conectar'}
                                 </button>
                                 <button
@@ -1486,7 +1486,7 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                                         : 'bg-secondary/50 text-muted-foreground/40 cursor-not-allowed border border-border/40'
                                         }`}
                                 >
-                                    {loading ? <Loader2 className="animate-spin h-4 w-4" /> : <Image src="/logos/tiendanube.png" width={16} height={16} alt="tn" className="rounded-sm" />}
+                                    {loading ? <Loader2 className="animate-spin h-4 w-4" /> : <Image src="/logos/tiendanube.png" width={16} height={16} style={{ width: 'auto', height: 'auto' }} alt="tn" className="rounded-sm" />}
                                     {integraciones?.tiendanube_access_token ? 'Actualizar TN' : 'TN sin conectar'}
                                 </button>
                             </div>
@@ -1500,11 +1500,11 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                         </span>
                         <label className="flex items-center gap-2 cursor-pointer group">
                             <Switch checked={filterMeli} onCheckedChange={(v) => startTransition(() => setFilterMeli(v))} className="scale-75" />
-                            <span className={`text-xs font-bold ${filterMeli ? 'text-amber-400' : 'text-muted-foreground group-hover:text-foreground'} transition-colors`}>Mercado Libre</span>
+                            <span className={`text-xs font-bold ${filterMeli ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground group-hover:text-foreground'} transition-colors`}>Mercado Libre</span>
                         </label>
                         <label className="flex items-center gap-2 cursor-pointer group">
                             <Switch checked={filterTN} onCheckedChange={(v) => startTransition(() => setFilterTN(v))} className="scale-75" />
-                            <span className={`text-xs font-bold ${filterTN ? 'text-blue-400' : 'text-muted-foreground group-hover:text-foreground'} transition-colors`}>Tienda Nube</span>
+                            <span className={`text-xs font-bold ${filterTN ? 'text-blue-600 dark:text-blue-400' : 'text-muted-foreground group-hover:text-foreground'} transition-colors`}>Tienda Nube</span>
                         </label>
 
                         {/* Barra de búsqueda */}
@@ -1542,10 +1542,10 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                                         <th className="text-left p-3 text-[9px] font-black uppercase tracking-widest text-muted-foreground">SKU Prov.</th>
                                         <th className="text-left p-3 text-[9px] font-black uppercase tracking-widest text-muted-foreground max-w-[160px]">Descripción</th>
                                         <th className="text-right p-3 text-[9px] font-black uppercase tracking-widest text-muted-foreground">Costo</th>
-                                        <th className="text-center p-3 text-[9px] font-black uppercase tracking-widest text-indigo-400">IVA</th>
+                                        <th className="text-center p-3 text-[9px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400">IVA</th>
                                         <th className="text-right p-3 text-[9px] font-black uppercase tracking-widest text-primary"><span className="inline-flex items-center gap-1"><Image src="/logos/icon.png" alt="KH" width={14} height={14} className="rounded-sm" /> Venta</span></th>
-                                        <th className="text-right p-3 text-[9px] font-black uppercase tracking-widest text-amber-400"><span className="inline-flex items-center gap-1"><Image src="/logos/meli.png" alt="ML" width={14} height={14} className="rounded-sm" /> MeLi</span></th>
-                                        <th className="text-right p-3 pr-4 text-[9px] font-black uppercase tracking-widest text-blue-400"><span className="inline-flex items-center gap-1"><Image src="/logos/tiendanube.png" alt="TN" width={14} height={14} className="rounded-sm" /> TN</span></th>
+                                        <th className="text-right p-3 text-[9px] font-black uppercase tracking-widest text-amber-600 dark:text-amber-400"><span className="inline-flex items-center gap-1"><Image src="/logos/meli.png" alt="ML" width={14} height={14} style={{ width: 'auto', height: 'auto' }} className="rounded-sm" /> MeLi</span></th>
+                                        <th className="text-right p-3 pr-4 text-[9px] font-black uppercase tracking-widest text-blue-600 dark:text-blue-400"><span className="inline-flex items-center gap-1"><Image src="/logos/tiendanube.png" alt="TN" width={14} height={14} style={{ width: 'auto', height: 'auto' }} className="rounded-sm" /> TN</span></th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-border/20">
@@ -1568,10 +1568,10 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                                                     <div className="flex gap-1 mt-1">
                                                         <input type="text" value={prod.sku_meli ?? ''} onChange={(e) => updateField(realIndex, 'sku_meli', e.target.value || null)}
                                                             placeholder="ML" title="SKU MeLi"
-                                                            className="w-[60px] font-mono text-[10px] border border-border/30 rounded bg-transparent px-1 py-0.5 outline-none focus:border-amber-500/50 placeholder:text-amber-500/25 text-amber-400/80" />
+                                                            className="w-[60px] font-mono text-[10px] border border-border/30 rounded bg-transparent px-1 py-0.5 outline-none focus:border-amber-500/50 placeholder:text-amber-500/25 text-amber-700 dark:text-amber-400/80" />
                                                         <input type="text" value={prod.sku_tn ?? ''} onChange={(e) => updateField(realIndex, 'sku_tn', e.target.value || null)}
                                                             placeholder="TN" title="SKU TN"
-                                                            className="w-[60px] font-mono text-[10px] border border-border/30 rounded bg-transparent px-1 py-0.5 outline-none focus:border-blue-500/50 placeholder:text-blue-500/25 text-blue-400/80" />
+                                                            className="w-[60px] font-mono text-[10px] border border-border/30 rounded bg-transparent px-1 py-0.5 outline-none focus:border-blue-500/50 placeholder:text-blue-500/25 text-blue-700 dark:text-blue-400/80" />
                                                     </div>
                                                 </td>
 
@@ -1594,7 +1594,7 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                                                 {/* IVA individual */}
                                                 <td className="p-3 text-center align-top">
                                                     <Select value={prod.iva_aplicado ?? '0'} onValueChange={(v) => updateProductIVA(realIndex, v)}>
-                                                        <SelectTrigger className="mx-auto h-8 w-[70px] text-xs font-bold border border-indigo-500/30 bg-transparent text-indigo-300 focus:ring-1 focus:ring-indigo-500/20 focus:border-indigo-500/50">
+                                                        <SelectTrigger className="mx-auto h-8 w-[70px] text-xs font-bold border border-indigo-500/30 bg-transparent text-indigo-600 dark:text-indigo-300 focus:ring-1 focus:ring-indigo-500/20 focus:border-indigo-500/50">
                                                             <SelectValue />
                                                         </SelectTrigger>
                                                         <SelectContent>
@@ -1616,13 +1616,13 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                                                 <td className="p-3 text-right align-top">
                                                     <div className="flex flex-col items-end gap-0.5">
                                                         {prod.precio_actual_meli != null && (
-                                                            <span className="text-[10px] text-amber-400/50 font-mono tabular-nums">
+                                                            <span className="text-[10px] text-amber-600/60 dark:text-amber-400/60 font-mono tabular-nums">
                                                                 ${formatARS(prod.precio_actual_meli)}
                                                             </span>
                                                         )}
                                                         <input type="number" value={prod.precio_meli ?? ''}
                                                             onChange={(e) => updateField(realIndex, 'precio_meli', parseFloat(e.target.value))}
-                                                            className="w-[100px] text-right font-bold rounded-lg border border-amber-500/30 bg-transparent py-1 px-2 text-sm outline-none focus:ring-1 focus:ring-amber-500/20 focus:border-amber-500/50 tabular-nums text-amber-300" />
+                                                            className="w-[100px] text-right font-bold rounded-lg border border-amber-500/30 bg-transparent py-1 px-2 text-sm outline-none focus:ring-1 focus:ring-amber-500/20 focus:border-amber-500/50 tabular-nums text-amber-600 dark:text-amber-300" />
                                                     </div>
                                                 </td>
 
@@ -1630,13 +1630,13 @@ export default function MotorModule({ user, integraciones, setIntegraciones, set
                                                 <td className="p-3 pr-4 text-right align-top">
                                                     <div className="flex flex-col items-end gap-0.5">
                                                         {prod.precio_actual_tn != null && (
-                                                            <span className="text-[10px] text-blue-400/50 font-mono tabular-nums">
+                                                            <span className="text-[10px] text-blue-600/60 dark:text-blue-400/50 font-mono tabular-nums">
                                                                 ${formatARS(prod.precio_actual_tn)}
                                                             </span>
                                                         )}
                                                         <input type="number" value={prod.precio_tn ?? ''}
                                                             onChange={(e) => updateField(realIndex, 'precio_tn', parseFloat(e.target.value))}
-                                                            className="w-[100px] text-right font-bold rounded-lg border border-blue-500/30 bg-transparent py-1 px-2 text-sm outline-none focus:ring-1 focus:ring-blue-500/20 focus:border-blue-500/50 tabular-nums text-blue-300" />
+                                                            className="w-[100px] text-right font-bold rounded-lg border border-blue-500/30 bg-transparent py-1 px-2 text-sm outline-none focus:ring-1 focus:ring-blue-500/20 focus:border-blue-500/50 tabular-nums text-blue-600 dark:text-blue-300" />
                                                     </div>
                                                 </td>
                                             </tr>

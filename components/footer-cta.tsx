@@ -14,9 +14,14 @@ function WhatsAppIcon({ className }: { className?: string }) {
 
 export function FooterCTA() {
   return (
-    <footer id="contacto" className="bg-secondary/30 border-t border-border/40">
+    <footer id="contacto" className="relative bg-secondary/20 border-t border-border/40 overflow-hidden">
+      {/* Background decoration */}
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-primary/5 rounded-full blur-3xl" />
+      </div>
+
       {/* Main CTA block */}
-      <div className="py-20 md:py-28">
+      <div className="relative py-24 md:py-32">
         <div className="container mx-auto px-4 md:px-8">
           <motion.div
             className="max-w-2xl mx-auto text-center"
@@ -25,8 +30,11 @@ export function FooterCTA() {
             viewport={{ once: true }}
             transition={{ duration: 0.5 }}
           >
-            <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-5">
-              Hablemos sin compromiso
+            <span className="inline-flex items-center gap-2 bg-primary/10 border border-primary/20 rounded-full px-4 py-1.5 text-xs font-semibold text-primary uppercase tracking-wider mb-6">
+              Contacto
+            </span>
+            <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold text-foreground mb-5 tracking-tight">
+              Hablemos <span className="text-primary italic">sin compromiso</span>
             </h2>
             <p className="text-muted-foreground text-lg mb-10 leading-relaxed">
               Contanos cómo trabaja tu empresa hoy y cuáles son los problemas que más
@@ -37,7 +45,7 @@ export function FooterCTA() {
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
               <Button
                 size="lg"
-                className="bg-primary text-primary-foreground hover:bg-primary/90 font-semibold px-8 h-12 text-base shadow-md"
+                className="bg-primary text-primary-foreground hover:bg-primary/90 font-semibold px-8 h-14 text-base shadow-xl shadow-primary/20 hover:shadow-primary/30 transition-all duration-300"
                 asChild
               >
                 <a href="https://wa.me/5491153695863" target="_blank" rel="noopener noreferrer">
@@ -48,7 +56,7 @@ export function FooterCTA() {
               <Button
                 size="lg"
                 variant="outline"
-                className="border-border text-foreground hover:bg-secondary h-12 px-8 text-base"
+                className="border-border text-foreground hover:bg-secondary h-14 px-8 text-base transition-all duration-300"
                 asChild
               >
                 <a href="mailto:hola@kokihawk.com.ar">
@@ -67,7 +75,7 @@ export function FooterCTA() {
       </div>
 
       {/* Bottom bar */}
-      <div className="border-t border-border/40 py-5">
+      <div className="relative border-t border-border/40 py-6">
         <div className="container mx-auto px-4 md:px-8 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-muted-foreground">
           <p>© {new Date().getFullYear()} Kokihawk. Todos los derechos reservados.</p>
           <p>Desarrollado y alojado en Argentina.</p>

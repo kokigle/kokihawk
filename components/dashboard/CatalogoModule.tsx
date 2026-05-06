@@ -326,7 +326,7 @@ export default function CatalogoModule({ userId, setActiveModule }: Props) {
                 <label className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border cursor-pointer select-none transition-all ${filterMeliCat ? 'bg-amber-500/10 border-amber-500/30' : 'bg-card border-border/50 hover:border-amber-500/25'}`}>
                     <Switch checked={filterMeliCat} onCheckedChange={setFilterMeliCat} className="data-[state=checked]:bg-amber-500 scale-75" />
                     <div className="w-3.5 h-3.5 rounded-sm overflow-hidden bg-white border border-border/30 flex items-center justify-center">
-                        <Image src="/logos/meli.png" alt="MeLi" width={10} height={10} className="object-contain" />
+                        <Image src="/logos/meli.png" alt="MeLi" width={14} height={14} style={{ width: 'auto', height: 'auto' }} className="object-contain" />
                     </div>
                     <span className={`text-[11px] font-bold ${filterMeliCat ? 'text-amber-500' : 'text-muted-foreground'}`}>Mercado Libre</span>
                 </label>
@@ -335,7 +335,7 @@ export default function CatalogoModule({ userId, setActiveModule }: Props) {
                 <label className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border cursor-pointer select-none transition-all ${filterTNCat ? 'bg-blue-500/10 border-blue-500/30' : 'bg-card border-border/50 hover:border-blue-500/25'}`}>
                     <Switch checked={filterTNCat} onCheckedChange={setFilterTNCat} className="data-[state=checked]:bg-blue-500 scale-75" />
                     <div className="w-3.5 h-3.5 rounded-sm overflow-hidden bg-white border border-border/30 flex items-center justify-center">
-                        <Image src="/logos/tiendanube.png" alt="TN" width={10} height={10} className="object-contain" />
+                        <Image src="/logos/tiendanube.png" alt="TN" width={14} height={14} style={{ width: 'auto', height: 'auto' }} className="object-contain" />
                     </div>
                     <span className={`text-[11px] font-bold ${filterTNCat ? 'text-blue-500' : 'text-muted-foreground'}`}>Tienda Nube</span>
                 </label>
@@ -370,12 +370,12 @@ export default function CatalogoModule({ userId, setActiveModule }: Props) {
                         <thead className="bg-secondary/50 sticky top-0 z-10 border-b border-border/60">
                             <tr>
                                 <th className="text-left px-5 py-3.5 text-[10px] font-black uppercase tracking-widest text-muted-foreground w-36">SKU Prov.</th>
-                                <th className="text-left px-3 py-3.5 text-[10px] font-black uppercase tracking-widest text-emerald-400 w-28">Proveedor</th>
+                                <th className="text-left px-3 py-3.5 text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400 w-28">Proveedor</th>
                                 <th className="text-center px-3 py-3.5 text-[10px] font-black uppercase tracking-widest text-muted-foreground w-20">Tiendas</th>
                                 <th className="text-left px-4 py-3.5 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Descripción</th>
-                                <th className="text-right px-3 py-3.5 text-[10px] font-black uppercase tracking-widest text-primary w-24"><span className="inline-flex items-center gap-1"><Image src="/logos/icon.png" alt="KH" width={12} height={12} className="rounded-sm" /> Venta</span></th>
-                                <th className="text-right px-3 py-3.5 text-[10px] font-black uppercase tracking-widest text-amber-400 w-24"><span className="inline-flex items-center gap-1"><Image src="/logos/meli.png" alt="ML" width={12} height={12} className="rounded-sm" /> MeLi</span></th>
-                                <th className="text-right px-4 py-3.5 text-[10px] font-black uppercase tracking-widest text-blue-400 w-24"><span className="inline-flex items-center gap-1"><Image src="/logos/tiendanube.png" alt="TN" width={12} height={12} className="rounded-sm" /> TN</span></th>
+                                <th className="text-right px-3 py-3.5 text-[10px] font-black uppercase tracking-widest text-primary w-24"><span className="inline-flex items-center gap-1"><Image src="/logos/icon.png" alt="KH" width={12} height={12} style={{ width: 'auto', height: 'auto' }} className="rounded-sm" /> Venta</span></th>
+                                <th className="text-right px-3 py-3.5 text-[10px] font-black uppercase tracking-widest text-amber-600 dark:text-amber-400 w-24"><span className="inline-flex items-center gap-1"><Image src="/logos/meli.png" alt="ML" width={12} height={12} style={{ width: 'auto', height: 'auto' }} className="rounded-sm" /> MeLi</span></th>
+                                <th className="text-right px-4 py-3.5 text-[10px] font-black uppercase tracking-widest text-blue-600 dark:text-blue-400 w-24"><span className="inline-flex items-center gap-1"><Image src="/logos/tiendanube.png" alt="TN" width={12} height={12} style={{ width: 'auto', height: 'auto' }} className="rounded-sm" /> TN</span></th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-border/20">
@@ -398,13 +398,13 @@ export default function CatalogoModule({ userId, setActiveModule }: Props) {
                                             <span className="font-mono text-sm font-bold text-foreground tracking-wide">{prod.sku}</span>
                                             {(prod.sku_meli || prod.sku_tn) && (
                                                 <div className="flex gap-2 mt-0.5">
-                                                    {prod.sku_meli && <span className="text-[9px] font-mono text-amber-400/60">ML: {prod.sku_meli}</span>}
-                                                    {prod.sku_tn && <span className="text-[9px] font-mono text-blue-400/60">TN: {prod.sku_tn}</span>}
+                                                    {prod.sku_meli && <span className="text-[9px] font-mono text-amber-700 dark:text-amber-400/60">ML: {prod.sku_meli}</span>}
+                                                    {prod.sku_tn && <span className="text-[9px] font-mono text-blue-700 dark:text-blue-400/60">TN: {prod.sku_tn}</span>}
                                                 </div>
                                             )}
                                         </td>
                                         <td className="px-3 py-3">
-                                            <span className="text-xs font-bold text-emerald-400/80">{prod.proveedor ?? 'General'}</span>
+                                            <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400/80">{prod.proveedor ?? 'General'}</span>
                                         </td>
                                         <td className="px-3 py-3 text-center">
                                             <PlatformBadges plataformas={prod.plataformas} />
@@ -418,12 +418,17 @@ export default function CatalogoModule({ userId, setActiveModule }: Props) {
                                             </span>
                                         </td>
                                         <td className="px-3 py-3 text-right">
-                                            <span className="text-base font-bold text-amber-300 tabular-nums tracking-tight">
+                                            <span className="text-base font-bold text-amber-600 dark:text-amber-300 tabular-nums tracking-tight">
                                                 {prod.precio_meli != null ? `$${prod.precio_meli.toLocaleString('es-AR')}` : <span className="text-muted-foreground/30 text-sm">—</span>}
                                             </span>
                                         </td>
                                         <td className="px-4 py-3 text-right">
-                                            <span className="text-base font-bold text-blue-300 tabular-nums tracking-tight">
+                                            <span className="text-base font-bold text-blue-600 dark:text-blue-300 tabular-nums tracking-tight">
+                                                {prod.precio_tn != null ? `$${prod.precio_tn.toLocaleString('es-AR')}` : <span className="text-muted-foreground/30 text-sm">—</span>}
+                                            </span>
+                                        </td>
+                                        <td className="px-4 py-3 text-right">
+                                            <span className="text-base font-bold text-blue-600 dark:text-blue-300 tabular-nums tracking-tight">
                                                 {prod.precio_tn != null ? `$${prod.precio_tn.toLocaleString('es-AR')}` : <span className="text-muted-foreground/30 text-sm">—</span>}
                                             </span>
                                         </td>
@@ -436,7 +441,7 @@ export default function CatalogoModule({ userId, setActiveModule }: Props) {
                                             {catalogo.length === 0 ? (
                                                 <>
                                                     <div className="w-16 h-16 rounded-2xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center">
-                                                        <DatabaseZap className="h-7 w-7 text-violet-400" />
+                                                        <DatabaseZap className="h-7 w-7 text-violet-600 dark:text-violet-400" />
                                                     </div>
                                                     <div className="space-y-1.5 max-w-xs">
                                                         <p className="font-black text-foreground text-lg">Catálogo vacío</p>
