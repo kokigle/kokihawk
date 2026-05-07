@@ -337,15 +337,6 @@ export default function CatalogoModule({ userId, setActiveModule }: Props) {
                     <div className="w-3.5 h-3.5 rounded-sm overflow-hidden bg-white border border-border/30 flex items-center justify-center">
                         <Image src="/logos/tiendanube.png" alt="TN" width={14} height={14} className="object-contain w-3 h-3" />
                     </div>
-                    <span className={`text-[11px] font-bold ${filterMeliCat ? 'text-amber-500' : 'text-muted-foreground'}`}>Mercado Libre</span>
-                </label>
-
-                {/* TN filter */}
-                <label className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border cursor-pointer select-none transition-all ${filterTNCat ? 'bg-blue-500/10 border-blue-500/30' : 'bg-card border-border/50 hover:border-blue-500/25'}`}>
-                    <Switch checked={filterTNCat} onCheckedChange={setFilterTNCat} className="data-[state=checked]:bg-blue-500 scale-75" />
-                    <div className="w-3.5 h-3.5 rounded-sm overflow-hidden bg-white border border-border/30 flex items-center justify-center">
-                        <Image src="/logos/tiendanube.png" alt="TN" width={14} height={14} className="object-contain w-3 h-3" />
-                    </div>
                     <span className={`text-[11px] font-bold ${filterTNCat ? 'text-blue-500' : 'text-muted-foreground'}`}>Tienda Nube</span>
                 </label>
 
